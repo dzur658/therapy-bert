@@ -14,5 +14,5 @@ def write_to_jsonl(conversation: TherapyTranscript, fingerprint: dict, output_fi
         "fingerprint": fingerprint
     }
 
-    with open(output_file, 'a') as f:
-        f.write(json.dumps(unified_json_object) + "\n")
+    with open(output_file, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(unified_json_object, ensure_ascii=False) + "\n")

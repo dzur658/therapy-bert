@@ -53,7 +53,7 @@ Conversation Length: 4
 </example_output>
 """
 
-def call_api(prompt, system_prompt=SYSTEM_PROMPT, sampling_params=None, endpoint=config.ENDPOINT):
+def call_api(prompt, system_prompt=SYSTEM_PROMPT, sampling_params=None, endpoint=config.ENDPOINT, schema=TherapyTranscript):
 
     packaged_prompt = [
         {"role": "system", "content": system_prompt},
@@ -65,7 +65,7 @@ def call_api(prompt, system_prompt=SYSTEM_PROMPT, sampling_params=None, endpoint
         api_key="your_api_key_here",
         api_base=endpoint,
         input=packaged_prompt,
-        text_format=TherapyTranscript,
+        text_format=schema,
         temperature = sampling_params["temperature"] if sampling_params and "temperature" in sampling_params else 0.7,
         top_p = sampling_params["top_p"] if sampling_params and "top_p" in sampling_params else 0.9,
         max_tokens = sampling_params["max_tokens"] if sampling_params and "max_tokens" in sampling_params else 16000
