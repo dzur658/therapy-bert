@@ -6,7 +6,8 @@ ENDPOINT = "http://localhost:8080/v1"
 
 TOTAL_EXAMPLES = 2
 OUTPUT_FILE = "./datasets/therapy_conversations.jsonl"
-OUTPUT_IOB = "./datasets/therapy_conversations_shards.jsonl"
+OUTPUT_SHARDS = "./datasets/therapy_conversations_shards.jsonl"
+OUTPUT_IOB = "./datasets/therapy_conversations_iob.jsonl"
 
 SAMPLING_PARAMS = {
     "temperature": 0.6,

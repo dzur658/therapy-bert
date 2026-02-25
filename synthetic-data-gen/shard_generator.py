@@ -159,7 +159,7 @@ if __name__ == "__main__":
             data = json.loads(line)
             input_data.append(data)
         
-    with open(config.OUTPUT_IOB, 'w', encoding='utf-8') as f:
+    with open(config.OUTPUT_SHARDS, 'w', encoding='utf-8') as f:
         for item in tqdm(input_data, desc="Processing conversations for knowledge graph extraction"):
             conversation_dict = item['conversation']
             conversation = TherapyTranscript.model_validate(conversation_dict)
