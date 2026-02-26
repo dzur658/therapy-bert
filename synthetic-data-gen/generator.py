@@ -2,6 +2,7 @@ import config
 import personas
 from validation import TherapyTranscript
 import export
+import judge
 
 import json
 import rich
@@ -75,10 +76,10 @@ def call_api(prompt, system_prompt=SYSTEM_PROMPT, sampling_params=None, endpoint
     return response.output_text
 
 def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_params=None, 
-                          endpoint=config.ENDPOINT, max_retries=3, previous_error=None):
+                          endpoint=config.ENDPOINT, max_retries=3, judge_feedback=None):
     # guardrail to protect against infinite recursion
     if max_retries <= 0:
-        print(f"Max retries reached for fingerprint {fingerprint}. Skipping this example. Last error: {previous_error}")
+        print(f"Max retries reached for fingerprint {fingerprint}. Skipping this example. Judge Feedback: {judge_feedback}")
         return None
 
     try:
@@ -99,8 +100,8 @@ def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_par
     Conversation Length: {fingerprint['conversation_length']}
     """
         
-        if previous_error:
-            prompt += f"\n\nIMPORTANT: Your previous attempt failed validation with the following error:\n{previous_error}\n\nPlease ensure that you strictly follow the rules and format outlined in the system prompt to avoid this error."
+        if judge_feedback:
+            prompt += f"\n\nIMPORTANT: Your previous attempt failed validation, implement the judge's feedback to fix the response: {judge_feedback}"
         
         conversation = call_api(prompt, system_prompt=system_prompt, sampling_params=sampling_params, endpoint=endpoint)
 
@@ -118,6 +119,17 @@ def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_par
     except Exception as e:
         print(f"Error generating conversation. Retries left: {max_retries - 1}. Error: {e}")
 
+        # call judge to get feedback on how to fix the response
+        judge_response = judge.judge_assist(
+            original_prompt=prompt,
+            previous_error=str(e),
+            failed_response=conversation,
+            sampling_params=sampling_params,
+            endpoint=endpoint
+        )
+
+        print(f"🧑‍⚖️  Judge Critique: {judge_response}")
+
         # recursive call
         return generate_conversation(
             fingerprint, 
@@ -125,7 +137,7 @@ def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_par
             sampling_params=sampling_params, 
             endpoint=endpoint, 
             max_retries=max_retries - 1, 
-            previous_error=str(e)
+            judge_feedback=judge_response
         )
 
     
@@ -145,4 +157,7 @@ if __name__ == "__main__":
         # rich.print(conversation)
 
         # append to jsonl file
-        export.write_to_jsonl(conversation, random_fingerprint, config.OUTPUT_FILE)
+        if conversation != None:
+            export.write_to_jsonl(conversation, random_fingerprint, config.OUTPUT_FILE)
+        else:
+            print(f"Failed to generate a valid conversation for fingerprint: {random_fingerprint}. Skipping this example.")

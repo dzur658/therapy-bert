@@ -9,8 +9,8 @@ attrs==25.4.0
 certifi==2026.1.4
 charset-normalizer==3.4.4
 click==8.3.1
-cuda-bindings==13.0.3
-cuda-pathfinder==1.2.2
+# cuda-bindings==13.0.3
+# cuda-pathfinder==1.2.2
 datasets==4.6.0
 dill==0.4.0
 distro==1.9.0
@@ -40,21 +40,21 @@ multidict==6.7.1
 multiprocess==0.70.18
 networkx==3.4.2
 numpy==2.2.6
-nvidia-cublas==13.1.0.3
-nvidia-cuda-cupti==13.0.85
-nvidia-cuda-nvrtc==13.0.88
-nvidia-cuda-runtime==13.0.96
-nvidia-cudnn-cu13==9.15.1.9
-nvidia-cufft==12.0.0.61
-nvidia-cufile==1.15.1.6
-nvidia-curand==10.4.0.35
-nvidia-cusolver==12.0.4.66
-nvidia-cusparse==12.6.3.3
-nvidia-cusparselt-cu13==0.8.0
-nvidia-nccl-cu13==2.28.9
-nvidia-nvjitlink==13.0.88
-nvidia-nvshmem-cu13==3.4.5
-nvidia-nvtx==13.0.85
+# nvidia-cublas==13.1.0.3
+# nvidia-cuda-cupti==13.0.85
+# nvidia-cuda-nvrtc==13.0.88
+# nvidia-cuda-runtime==13.0.96
+# nvidia-cudnn-cu13==9.15.1.9
+# nvidia-cufft==12.0.0.61
+# nvidia-cufile==1.15.1.6
+# nvidia-curand==10.4.0.35
+# nvidia-cusolver==12.0.4.66
+# nvidia-cusparse==12.6.3.3
+# nvidia-cusparselt-cu13==0.8.0
+# nvidia-nccl-cu13==2.28.9
+# nvidia-nvjitlink==13.0.88
+# nvidia-nvshmem-cu13==3.4.5
+# nvidia-nvtx==13.0.85
 openai==2.21.0
 packaging==26.0
 pandas==2.3.3
@@ -84,11 +84,11 @@ sympy==1.14.0
 threadpoolctl==3.6.0
 tiktoken==0.12.0
 tokenizers==0.22.2
-torch==2.10.0+cu130
-torchvision==0.25.0+cu130
+torch==2.10.0
+torchvision==0.25.0
 tqdm==4.67.3
 transformers==5.2.0
-triton==3.6.0
+# triton==3.6.0
 typer==0.24.1
 typer-slim==0.24.0
 typing-extensions==4.15.0
