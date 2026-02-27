@@ -1,3 +1,8 @@
+import importlib
+
+config = importlib.import_module("synthetic-data-gen.config")
+validation = importlib.import_module("synthetic-data-gen.validation")
+
 import torch
 from datasets import DatasetDict, load_dataset
 from transformers import (
@@ -7,20 +12,20 @@ from transformers import (
     Trainer, 
     DataCollatorForTokenClassification
 )
+import evaluate
+import numpy as np
+from typing import get_args
 
 # 1. Define the exact vocabulary of your Knowledge Graph
-UNIQUE_LABELS = [
-    "O", 
-    "B-Symptom", "I-Symptom", 
-    "B-Trigger", "I-Trigger", 
-    "B-Emotion", "I-Emotion", 
-    "B-Person", "I-Person", 
-    "B-Coping_Mechanism", "I-Coping_Mechanism", 
-    "B-Life_Event", "I-Life_Event"
-]
+Entity = validation.Entity
 
-# Mapping File
-MAP_FILE = "./datasets/therapy_conversaitons_iob.json"  # This should be a JSON file that maps your IOB tags to the original entity text and labels for later reference
+base_labels = get_args(Entity.model_fields['label'].annotation)
+
+# 2. Dynamically construct the IOB array
+UNIQUE_LABELS = ["O"]
+for label in base_labels:
+    UNIQUE_LABELS.append(f"B-{label}")
+    UNIQUE_LABELS.append(f"I-{label}")
 
 # Create dictionaries to translate between human strings and computer integers
 label2id = {label: i for i, label in enumerate(UNIQUE_LABELS)}
@@ -39,21 +44,10 @@ model = AutoModelForTokenClassification.from_pretrained(
 )
 
 # 3. Load and Preprocess the Dataset
-master_dataset = load_dataset("json", data_files=MAP_FILE, split="train")
-
-# 1. First Split: 90% for Train+Val, 10% for the locked Test set
-train_test_split = master_dataset.train_test_split(test_size=0.1)
-
-# 2. Second Split: Out of the 90% Train pool, carve out the Validation set.
-# To get exactly 10% of the TOTAL original dataset, we take ~11.1% of the 90% pool (0.1 / 0.9 = 0.1111)
-train_val_split = train_test_split['train'].train_test_split(test_size=0.1111)
-
-# 3. Assemble the final 3-part Dictionary
-dataset = DatasetDict({
-    'train': train_val_split['train'],
-    'validation': train_val_split['test'],
-    'test': train_test_split['test']
-})
+dataset = load_dataset("json", data_files={"train": config.MAP_DIR + "/train.jsonl",
+                                            "validation": config.MAP_DIR + "/val.jsonl",
+                                            "test": config.MAP_DIR + "/test.jsonl"
+                                            })
 
 def preprocess_function(examples):
     batch_input_ids = []
@@ -87,6 +81,33 @@ def preprocess_function(examples):
         "labels": batch_labels
     }
 
+metric = evaluate.load("seqeval")
+
+def compute_metrics(p):
+    """
+    Takes the model's raw logits and the true labels, strips out the padding,
+    and calculates exact-match span scores.
+    """
+    predictions, labels = p
+
+    # get the most confident prediction
+    predictions = np.argmax(predictions, axis=2)
+
+    # get predictions and labels while ignoring special tokens
+    true_predictions = [
+        [id2label[p] for (p, l) in zip(prediction, label) if l != -100]
+        for prediction, label in zip(predictions, labels)
+    ]
+    
+    true_labels = [
+        [id2label[l] for (p, l) in zip(prediction, label) if l != -100]
+        for prediction, label in zip(predictions, labels)
+    ]
+
+    # Compute the metrics using the seqeval library
+    results = metric.compute(predictions=true_predictions, references=true_labels)
+    return results
+
 # Apply the preprocessing map and drop the old string columns
 tokenized_datasets = dataset.map(
     preprocess_function, 
@@ -101,10 +122,10 @@ data_collator = DataCollatorForTokenClassification(tokenizer=tokenizer)
 
 # 5. Define Training Arguments
 training_args = TrainingArguments(
-    output_dir="./therapy-modernbert-ner",
-    evaluation_strategy="epoch",      # Check performance at the end of each epoch
+    output_dir="./therapy-bert-ner",
+    eval_strategy="epoch",      # Check performance at the end of each epoch
     learning_rate=2e-5,               # Standard starting rate for fine-tuning BERT
-    per_device_train_batch_size=8,    # Adjust down to 4 or 2 if your GPU runs out of memory
+    per_device_train_batch_size=2,    # Adjust down to 4 or 2 if your GPU runs out of memory
     per_device_eval_batch_size=8,
     num_train_epochs=3,               # 3 to 5 epochs is usually the sweet spot for NER
     weight_decay=0.01,
@@ -119,8 +140,8 @@ trainer = Trainer(
     args=training_args,
     train_dataset=tokenized_datasets["train"],
     eval_dataset=tokenized_datasets["validation"],
-    tokenizer=tokenizer,
     data_collator=data_collator,
+    compute_metrics=compute_metrics,
 )
 
 if __name__ == "__main__":

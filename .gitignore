@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ignore weights directories
+therapy-modernbert-ner/*
+therapy-modernbert-ner-final/*
+therapy-bert-ner/*
