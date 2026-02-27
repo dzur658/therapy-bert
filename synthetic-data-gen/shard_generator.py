@@ -8,84 +8,73 @@ from tqdm import tqdm
 
 SYSTEM_PROMPT = """\
 You are an expert clinical data extractor. Your job is to read a therapy transcript and extract a Knowledge Graph.
-You must extract the exact, messy phrasing used by the patient as the entity "text", but you must strictly categorize them using only the approved Labels and Predicates.
+You must extract the exact, messy phrasing used by the patient or therapist as the entity "text", but you must strictly categorize them using only the approved Labels and Predicates.
 
 APPROVED LABELS: "Symptom", "Trigger", "Emotion", "Person", "Coping_Mechanism", "Life_Event"
 APPROVED PREDICATES: "CAUSES", "WORSENS", "IMPROVES", "RELATES_TO", "EXPERIENCES"
 
-CRITICAL RULE: Every extracted "text" MUST be a literal, character-for-character substring of the transcript. Do NOT summarize. Do NOT change verbs to nouns (e.g., if the patient says "isolated", do not extract "isolation"). 
+CRITICAL RULE 1: Every extracted "text" MUST be a literal, character-for-character substring of the transcript. Do NOT summarize. Do NOT change verbs to nouns (e.g., if the patient says "isolated", do not extract "isolation"). Failure to use the exact text from the transcript will result in a validation error.
 
-NOTE: Sources and targets must be defined in the entities list. New sources and targets are not allowed to be defined in the relations without first being defined in the entities. If an entity is mentioned in the relations that is not defined in the entities list, this is a validation error.
+CRITICAL RULE 2 (GRAPH INTEGRITY): Sources and targets must be defined in the entities list first. If an entity is mentioned in the relations that is not defined in the entities list, this is a fatal validation error.
+
+CRITICAL RULE 3 (EPISTEMIC TRACKING): Therapy involves hypothesis testing. You must track WHO proposed a relationship and HOW the patient reacted using these two fields for every relation:
+- "proposed_by": Must be either "Patient" or "Therapist". (Who explicitly verbalized the connection first?)
+- "patient_acceptance": Must be "Affirmed", "Denied", "Avoided", or "Realized_Later". 
+*Important*: If the patient proposes the idea themselves, then this is affirmation, and the "patient_acceptance" should be "Affirmed" since they are accepting their own idea.
 
 <example>
 
 <input_example>
-Therapist: How did you handle the presentation on Tuesday?
-Patient: I was absolutely terrified of my boss judging me, so I stayed up all night practicing the slides. But the lack of sleep just gave me a massive migraine during the actual meeting, which made me feel even more incompetent.
+Patient: I've been getting these terrible migraines every time I have to visit my parents.
+Therapist: It sounds like visiting them is a major trigger. Do you think your mother's criticism causes that physical pain?
+Patient: No, actually she's been really supportive lately. I think it's just the travel anxiety that triggers the migraines.
 </input_example>
 
 <output_example>
 {
   "entities": [
     {
-      "text": "presentation",
-      "label": "Life_Event"
-    },
-    {
-      "text": "terrified",
-      "label": "Emotion"
-    },
-    {
-      "text": "my boss",
-      "label": "Person"
-    },
-    {
-      "text": "stayed up all night practicing",
-      "label": "Coping_Mechanism"
-    },
-    {
-      "text": "lack of sleep",
+      "text": "migraines",
       "label": "Symptom"
     },
     {
-      "text": "massive migraine",
+      "text": "visit my parents",
+      "label": "Trigger"
+    },
+    {
+      "text": "mother's criticism",
+      "label": "Trigger"
+    },
+    {
+      "text": "physical pain",
       "label": "Symptom"
     },
     {
-      "text": "incompetent",
+      "text": "travel anxiety",
       "label": "Emotion"
     }
   ],
   "relations": [
     {
-      "source": "presentation",
+      "source": "visit my parents",
       "predicate": "CAUSES",
-      "target": "terrified"
+      "target": "migraines",
+      "proposed_by": "Patient",
+      "patient_acceptance": "Affirmed" 
     },
     {
-      "source": "my boss",
-      "predicate": "RELATES_TO",
-      "target": "terrified"
-    },
-    {
-      "source": "terrified",
+      "source": "mother's criticism",
       "predicate": "CAUSES",
-      "target": "stayed up all night practicing"
+      "target": "physical pain",
+      "proposed_by": "Therapist",
+      "patient_acceptance": "Denied"
     },
     {
-      "source": "stayed up all night practicing",
+      "source": "travel anxiety",
       "predicate": "CAUSES",
-      "target": "lack of sleep"
-    },
-    {
-      "source": "lack of sleep",
-      "predicate": "CAUSES",
-      "target": "massive migraine"
-    },
-    {
-      "source": "massive migraine",
-      "predicate": "WORSENS",
-      "target": "incompetent"
+      "target": "migraines",
+      "proposed_by": "Patient",
+      "patient_acceptance": "Affirmed"
     }
   ]
 }

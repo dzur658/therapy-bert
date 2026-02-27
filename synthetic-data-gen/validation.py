@@ -45,6 +45,14 @@ class Relation(BaseModel):
     )
     target: str = Field(..., description="The text of the target entity.")
 
+    # --- THE NEW EPISTEMIC TRACKERS ---
+    proposed_by: Literal["Patient", "Therapist"] = Field(
+        ..., description="Who first introduced this specific relationship?"
+    )
+    patient_acceptance: Literal["Affirmed", "Denied", "Avoided", "Realized_Later"] = Field(
+        ..., description="How did the patient react to this relationship being suggested?"
+    )
+
 # --- 3. The Master Graph Object ---
 class KnowledgeGraphExtraction(BaseModel):
     entities: List[Entity] = Field(..., description="List of all clinical entities found.")
