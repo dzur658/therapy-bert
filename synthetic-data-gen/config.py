@@ -4,7 +4,7 @@ CONVERSATION_LENGTH_MAX = 20
 
 ENDPOINT = "http://localhost:8090/v1"
 
-TOTAL_EXAMPLES = 2
+TOTAL_EXAMPLES = 3000
 OUTPUT_FILE = "./datasets/therapy_conversations.jsonl"
 OUTPUT_SHARDS = "./datasets/therapy_conversations_shards.jsonl"
 OUTPUT_IOB = "./datasets/therapy_conversations_iob.jsonl"

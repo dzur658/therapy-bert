@@ -117,7 +117,7 @@ def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_par
         return valid_data
 
     except Exception as e:
-        print(f"Error generating conversation. Retries left: {max_retries - 1}. Error: {e}")
+        # print(f"Error generating conversation. Retries left: {max_retries - 1}. Error: {e}")
 
         # call judge to get feedback on how to fix the response
         judge_response = judge.judge_assist(
@@ -128,7 +128,7 @@ def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_par
             endpoint=endpoint
         )
 
-        print(f"🧑‍⚖️  Judge Critique: {judge_response}")
+        # print(f"🧑‍⚖️  Judge Critique: {judge_response}")
 
         # recursive call
         return generate_conversation(
