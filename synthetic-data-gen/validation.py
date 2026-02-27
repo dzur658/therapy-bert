@@ -1,10 +1,30 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import List, Literal
+import re
 
 class DialogueTurn(BaseModel):
-    # 'Literal' forces the LLM to strictly choose one of these two strings
-    speaker: Literal["Therapist", "Patient"]
-    text: str = Field(..., description="The exact words spoken by the person.")
+    # MiniMax likes to shorten roles to match clinical transcripts, so we correct these on the fly
+    speaker: str = Field(..., description="Either 'Patient' or 'Therapist'")
+    text: str = Field(..., description="The dialogue text")
+
+    @field_validator('speaker', mode='before')
+    @classmethod
+    def clean_speaker_name(cls, value: str) -> str:
+        # Intercept Minimax's weird "therap" hallucination
+        if value.lower().strip() in ['therap', 'therap.', 'therapist']:
+            return 'Therapist'
+        if value.lower().strip() in ['pat', 'patient']:
+            return 'Patient'
+        
+        return value
+
+    @field_validator('speaker')
+    @classmethod
+    def enforce_literal(cls, value: str) -> str:
+        # Now we enforce the strict rule AFTER we cleaned the data
+        if value not in ['Therapist', 'Patient']:
+            raise ValueError(f"Speaker must be Therapist or Patient, got: {value}")
+        return value
 
 class TherapyTranscript(BaseModel):
     turns: List[DialogueTurn] = Field(..., description="A list of alternating dialogue turns.")
@@ -79,3 +99,11 @@ class KnowledgeGraphExtraction(BaseModel):
                 )
                 
         return self
+    
+def contains_mandarin(text: str) -> bool:
+    """
+    Check for Mandarian characters based off their unicode range.
+    """
+    # \u4e00-\u9FFF is the core unicode block for Chinese characters
+    mandarin_pattern = re.compile(r'[\u4e00-\u9FFF]')
+    return bool(mandarin_pattern.search(text))

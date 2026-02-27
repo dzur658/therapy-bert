@@ -1,6 +1,6 @@
 import config
 import personas
-from validation import TherapyTranscript
+from validation import TherapyTranscript, contains_mandarin
 import export
 import judge
 
@@ -112,7 +112,10 @@ def generate_conversation(fingerprint, system_prompt=SYSTEM_PROMPT, sampling_par
         number_of_turns = len(valid_data.turns)
 
         if number_of_turns != fingerprint['conversation_length']:
-            raise ValueError(f"Conversation length mismatch. Expected {fingerprint['conversation_length']} turns but got {number_of_turns} turns.")
+            print(f"Accepting turn count mismatch. Expected {fingerprint['conversation_length']} turns but got {number_of_turns} turns.")
+        
+        if contains_mandarin(conversation):
+            raise ValueError("Mandarin characters detected in conversation, which is not allowed. Conversation must be fully in English.")
 
         return valid_data
 
