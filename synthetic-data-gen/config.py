@@ -10,6 +10,7 @@ OUTPUT_SHARDS = "./datasets/therapy_conversations_shards.jsonl"
 OUTPUT_IOB = "./datasets/therapy_conversations_iob.jsonl"
 MAP_DIR = "synthetic-data-gen/datasets/IOB-dataset-splits"
 RE_OUTPUT_FILE = "./datasets/re_master_data.jsonl"
+RE_TRAINING_DATA_DIR = "./datasets/re_datasets"
 
 SAMPLING_PARAMS = {
     "temperature": 1.0,
