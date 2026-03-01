@@ -1,0 +1,2 @@
+# ignore patients directory containing local LadybugDB files for each patient
+patients/*
