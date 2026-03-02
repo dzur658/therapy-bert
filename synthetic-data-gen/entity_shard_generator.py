@@ -163,7 +163,6 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
         )
 
         # Swapped to EntityExtraction schema
-        packaged_conversation.append({"role": "assistant", "content": response.output_text})
 
         # Validate against the new schema
         valid_data = EntityExtraction.model_validate_json(response.output_text)
@@ -187,6 +186,7 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
           print(f"Max retries reached for transcript. Skipping. Model Attempted with: {failed_response_text}")
           return None
 
+        packaged_conversation.append({"role": "assistant", "content": failed_response_text})
         
         judge_response = judge.judge_assist(
             system_prompt=JUDGE_SHARD_SYSTEM_PROMPT,
