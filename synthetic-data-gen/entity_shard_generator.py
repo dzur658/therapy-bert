@@ -151,12 +151,12 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
             {"role": "user", "content": original_prompt}
           ]
 
-        response = litellm.responses(
+        response = litellm.completion(
           model="openai/local-model",
           api_key="your_api_key_here",
           api_base=endpoint,
-          input=packaged_conversation,
-          text_format=EntityExtraction,
+          messages=packaged_conversation,
+          response_format=EntityExtraction,
           temperature = sampling_params["temperature"] if sampling_params and "temperature" in sampling_params else 0.7,
           top_p = sampling_params["top_p"] if sampling_params and "top_p" in sampling_params else 0.9,
           max_tokens = sampling_params["max_tokens"] if sampling_params and "max_tokens" in sampling_params else 16000
@@ -165,14 +165,14 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
         # Swapped to EntityExtraction schema
 
         # Validate against the new schema
-        valid_data = EntityExtraction.model_validate_json(response.output_text)
+        valid_data = EntityExtraction.model_validate_json(response.response.choices[0].message.content)
 
         if valid_data:
             # Enforce exact string matching and case correction
             for entity in valid_data.entities:
                 entity.text = validate_and_fix_entity(entity.text, transcript)
 
-        if contains_mandarin(response.output_text):
+        if contains_mandarin(response.response.choices[0].message.content):
             raise ValueError("Mandarin characters detected. Must be English only.")
 
         return valid_data
@@ -180,7 +180,7 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
     except Exception as e:
         print(f"Error extracting entities. Retries left: {max_retries - 1}. Error: {e}")
 
-        failed_response_text = response.output_text if response is not None else ""
+        failed_response_text = response.response.choices[0].message.content if response is not None else ""
 
         if (max_retries - 1) <= 0:
           print(f"Max retries reached for transcript. Skipping. Model Attempted with: {failed_response_text}")
