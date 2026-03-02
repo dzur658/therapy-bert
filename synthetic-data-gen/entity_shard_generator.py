@@ -165,14 +165,14 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
         # Swapped to EntityExtraction schema
 
         # Validate against the new schema
-        valid_data = EntityExtraction.model_validate_json(response.response.choices[0].message.content)
+        valid_data = EntityExtraction.model_validate_json(response.choices[0].message.content)
 
         if valid_data:
             # Enforce exact string matching and case correction
             for entity in valid_data.entities:
                 entity.text = validate_and_fix_entity(entity.text, transcript)
 
-        if contains_mandarin(response.response.choices[0].message.content):
+        if contains_mandarin(response.choices[0].message.content):
             raise ValueError("Mandarin characters detected. Must be English only.")
 
         return valid_data
@@ -180,7 +180,7 @@ Extract ONLY the clinical entities from the following therapy transcript accordi
     except Exception as e:
         print(f"Error extracting entities. Retries left: {max_retries - 1}. Error: {e}")
 
-        failed_response_text = response.response.choices[0].message.content if response is not None else ""
+        failed_response_text = response.choices[0].message.content if response is not None else ""
 
         if (max_retries - 1) <= 0:
           print(f"Max retries reached for transcript. Skipping. Model Attempted with: {failed_response_text}")
