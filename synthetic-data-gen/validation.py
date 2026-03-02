@@ -53,19 +53,23 @@ class TherapyTranscript(BaseModel):
 # --- 1. The Nodes (Entities) ---
 class Entity(BaseModel):
     text: str = Field(..., description="The exact text snippet from the dialogue.")
-    label: Literal["Symptom", "Trigger", "Emotion", "Person", "Coping_Mechanism", "Life_Event"] = Field(
+    label: Literal["Symptom", "Trigger", "Emotion", "Person", "Coping_Mechanism", "Life_Event", "Behavior"] = Field(
         ..., description="The clinical category of the entity."
     )
+
+# For validating on Entity Pass
+class EntityExtraction(BaseModel):
+    entities: List[Entity]
 
 # --- 2. The Edges (Relations) ---
 class Relation(BaseModel):
     source: str = Field(..., description="The text of the source entity.")
-    predicate: Literal["CAUSES", "WORSENS", "IMPROVES", "RELATES_TO", "EXPERIENCES"] = Field(
+    predicate: Literal["CAUSES", "WORSENS", "IMPROVES", "RELATES_TO", "EXPERIENCES", "TRIGGERS"] = Field(
         ..., description="The strict relationship type."
     )
     target: str = Field(..., description="The text of the target entity.")
 
-    # --- THE NEW EPISTEMIC TRACKERS ---
+    # EPISTEMIC TRACKERS
     proposed_by: Literal["Patient", "Therapist"] = Field(
         ..., description="Who first introduced this specific relationship?"
     )
@@ -85,13 +89,13 @@ class KnowledgeGraphExtraction(BaseModel):
         
         # 2. Inspect every single relation
         for i, rel in enumerate(self.relations):
-            # 3. The Enforcement Logic: Does the source exist in our mugshot pile?
+            # 3. The Enforcement Logic: Does the source exist in the entity pile?
             if rel.source not in valid_entity_texts:
                 raise ValueError(
                     f"Referential Error in relation {i}: The source entity '{rel.source}' "
                     f"was used in a relationship, but was never defined in the entities list."
                 )
-            # 4. Does the target exist in our mugshot pile?
+            # 4. Does the target exist in the entity pile?
             if rel.target not in valid_entity_texts:
                 raise ValueError(
                     f"Referential Error in relation {i}: The target entity '{rel.target}' "

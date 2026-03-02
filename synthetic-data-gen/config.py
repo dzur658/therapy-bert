@@ -6,6 +6,8 @@ ENDPOINT = "http://localhost:8090/v1"
 
 TOTAL_EXAMPLES = 3000
 OUTPUT_FILE = "./datasets/therapy_conversations.jsonl"
+MERGED_FILE = "./datasets/merged_conversations.jsonl"
+OUTPUT_ENTITIES = "./datasets/therapy_conversations_entities.jsonl"
 OUTPUT_SHARDS = "./datasets/therapy_conversations_shards.jsonl"
 OUTPUT_IOB = "./datasets/therapy_conversations_iob.jsonl"
 MAP_DIR = "synthetic-data-gen/datasets/IOB-dataset-splits"
