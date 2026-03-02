@@ -236,7 +236,6 @@ if __name__ == "__main__":
                 
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
             f.flush() 
-            break # Testing break
     
     print("Entity extraction complete. Updated data with valid entities.")
     print(f"Total conversations processed: {len(input_data)}")
