@@ -108,7 +108,7 @@ class SubtextEngine:
         # Decode only the newly generated tokens (ignoring the prompt)
         input_length = inputs.input_ids.shape[1]
         response = self.tokenizer.decode(generated_ids[0][input_length:], skip_special_tokens=True)
-        return response.strip()
+        return response.split("\n")[0].strip()  # Return only the first line for clarity
 
     def generate_baseline_insight(self, input_prompt: str, max_tokens: int = 50) -> str:
         """
