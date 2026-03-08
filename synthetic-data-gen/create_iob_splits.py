@@ -3,7 +3,7 @@ from datasets import load_dataset, DatasetDict
 
 import config
 
-def create_static_splits(input_file=config.OUTPUT_IOB, output_dir="IOB-dataset-splits"):
+def create_static_splits(input_file=config.OUTPUT_IOB, output_dir="./datasets/IOB-dataset-splits"):
     print(f"Loading master dataset from {input_file}...")
     raw_dataset = load_dataset("json", data_files=input_file, split="train")
 

@@ -82,8 +82,7 @@ def convert_to_iob(transcript_text, json_entities):
     return readable_tokens, input_ids, iob_tags
 
 if __name__ == "__main__":
-    # input_file = config.OUTPUT_SHARDS  # Point this to your config.OUTPUT_IOB
-    input_file = "./datasets/archive/therapy_conversations_shards_test.jsonl"
+    input_file = config.CLEAN_DATA
     final_dataset = []
 
     print("Converting Knowledge Graph shards to IOB token arrays...")
@@ -120,4 +119,4 @@ if __name__ == "__main__":
         json.dump(final_dataset, f, indent=2, ensure_ascii=False)
         
     print(f"Successfully processed {len(final_dataset)} transcripts into IOB format.")
-    print("Data saved to bert_training_data.json. Ready for training.")
+    print(f"Data saved to {config.OUTPUT_IOB}.")

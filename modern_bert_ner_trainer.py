@@ -15,6 +15,19 @@ from transformers import (
 import evaluate
 import numpy as np
 from typing import get_args
+import platform
+
+# for older macOS versions, we do not want to use bfloat16 as it is only supported in MacOS 14+
+is_macos_14_plus = (
+    platform.system() == "Darwin"
+    and int(platform.mac_ver()[0].split(".")[0]) >= 14
+)
+
+use_mps_bf16 = torch.backends.mps.is_available() and is_macos_14_plus
+use_cuda_bf16 = torch.cuda.is_available()
+
+# check for MPS
+print(torch.backends.mps.is_available())
 
 # 1. Define the exact vocabulary of your Knowledge Graph
 Entity = validation.Entity
@@ -57,6 +70,8 @@ def preprocess_function(examples):
     special_token_ids = set(tokenizer.all_special_ids)
     
     for tokens, tags in zip(examples["tokens"], examples["ner_tags"]):
+        if len(tokens) != len(tags):
+            raise ValueError("Tokens and NER tags must be the same length.")
         # Convert the string tokens (e.g., "Ġpanic") back into integer IDs (e.g., 4598)
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
         
@@ -106,7 +121,12 @@ def compute_metrics(p):
 
     # Compute the metrics using the seqeval library
     results = metric.compute(predictions=true_predictions, references=true_labels)
-    return results
+    return {
+        "precision": results["overall_precision"],
+        "recall": results["overall_recall"],
+        "f1": results["overall_f1"],
+        "accuracy": results["overall_accuracy"],
+    }
 
 # Apply the preprocessing map and drop the old string columns
 tokenized_datasets = dataset.map(
@@ -125,11 +145,11 @@ training_args = TrainingArguments(
     output_dir="./therapy-bert-ner",
     eval_strategy="epoch",      # Check performance at the end of each epoch
     learning_rate=2e-5,               # Standard starting rate for fine-tuning BERT
-    per_device_train_batch_size=2,    # Adjust down to 4 or 2 if your GPU runs out of memory
+    per_device_train_batch_size=4,    # Adjust down to 4 or 2 if your GPU runs out of memory
     per_device_eval_batch_size=8,
     num_train_epochs=3,               # 3 to 5 epochs is usually the sweet spot for NER
     weight_decay=0.01,
-    bf16=True,                        # ModernBERT loves bfloat16 precision for faster training
+    bf16=use_cuda_bf16 or use_mps_bf16,                        # ModernBERT loves bfloat16 precision for faster training
     logging_steps=50,
     save_strategy="epoch",            # Save a model checkpoint every epoch
 )
@@ -144,10 +164,16 @@ trainer = Trainer(
     compute_metrics=compute_metrics,
 )
 
+print(f"trainer device: {trainer.args.device}")
+print(f"cuda available: {torch.cuda.is_available()}")
+print(f"mps available: {torch.backends.mps.is_available()}")
+print(f"bf16 enabled: {training_args.bf16}")
+
 if __name__ == "__main__":
     print("Initializing ModernBERT-large training...")
     trainer.train()
     
     # Save the final pristine model to your hard drive
     trainer.save_model("./therapy-modernbert-ner-final")
+    tokenizer.save_pretrained("./therapy-modernbert-ner-final")
     print("Training complete! Model saved to ./therapy-modernbert-ner-final")
