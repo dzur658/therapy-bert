@@ -3,19 +3,23 @@ import importlib
 config = importlib.import_module("synthetic-data-gen.config")
 validation = importlib.import_module("synthetic-data-gen.validation")
 
+from ner_crf_layer import ModernBERT_CRF
+
 import torch
-from datasets import DatasetDict, load_dataset
+from datasets import load_dataset
 from transformers import (
     AutoTokenizer, 
-    AutoModelForTokenClassification, 
     TrainingArguments, 
     Trainer, 
     DataCollatorForTokenClassification
 )
+
+import json as js
 import evaluate
 import numpy as np
 from typing import get_args
 import platform
+import os
 
 # for older macOS versions, we do not want to use bfloat16 as it is only supported in MacOS 14+
 is_macos_14_plus = (
@@ -49,8 +53,8 @@ MODEL_NAME = "answerdotai/ModernBERT-large"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
 # We use AutoModelForTokenClassification and pass it our custom label maps
-model = AutoModelForTokenClassification.from_pretrained(
-    MODEL_NAME,
+model = ModernBERT_CRF(
+    model_name=MODEL_NAME,
     num_labels=len(UNIQUE_LABELS),
     id2label=id2label,
     label2id=label2id
@@ -62,60 +66,107 @@ dataset = load_dataset("json", data_files={"train": config.MAP_DIR + "/train.jso
                                             "test": config.MAP_DIR + "/test.jsonl"
                                             })
 
+class CRFTrainer(Trainer):
+    def _save(self, output_dir=None, state_dict=None):
+        output_dir = output_dir or self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
+        self.model.save_checkpoint(output_dir)
+
+        processor = getattr(self, "processing_class", None)
+        if processor is None:
+            processor = getattr(self, "tokenizer", None)
+
+        if processor is not None:
+            processor.save_pretrained(output_dir)
+
+        # dump training arguments in a json structure
+        with open(os.path.join(output_dir, "training_args.json"), "w", encoding="utf-8") as handle:
+            js.dump(self.args.to_dict(), handle, indent=2)
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        # We can just let our custom forward() method handle the loss calculation natively.
+        outputs = model(**inputs)
+        loss = outputs["loss"]
+        return (loss, outputs) if return_outputs else loss
+
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        with torch.no_grad():
+            inputs = self._prepare_inputs(inputs)
+
+            output = model(**inputs)
+            
+            # Get the loss and emission logits
+            loss = output["loss"]
+            logits = output["logits"]
+            
+            if prediction_loss_only:
+                return (loss, None, None)
+                
+            # Run Viterbi decoding to get the exact tag paths
+            bool_mask = inputs["attention_mask"].type(torch.bool)
+            predicted_paths = model.crf.decode(logits, mask=bool_mask)
+            
+            # Pad the variable-length Viterbi lists back into a perfect rectangle 
+            # so the Hugging Face evaluation loop doesn't crash
+            max_len = logits.shape[1]
+            padded_preds = []
+            for path in predicted_paths:
+                padded_path = path + [-100] * (max_len - len(path))
+                padded_preds.append(padded_path)
+                
+            predictions_tensor = torch.tensor(padded_preds, device=logits.device)
+            labels = inputs.get("labels")
+
+        return (loss, predictions_tensor, labels)
+
 def preprocess_function(examples):
     batch_input_ids = []
     batch_attention_mask = []
     batch_labels = []
-    
-    special_token_ids = set(tokenizer.all_special_ids)
-    
+
     for tokens, tags in zip(examples["tokens"], examples["ner_tags"]):
         if len(tokens) != len(tags):
             raise ValueError("Tokens and NER tags must be the same length.")
-        # Convert the string tokens (e.g., "Ġpanic") back into integer IDs (e.g., 4598)
+
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
-        
-        # Create an attention mask (1 means "pay attention to this token")
         attention_mask = [1] * len(input_ids)
-        
-        labels = []
-        for token_id, tag in zip(input_ids, tags):
-            # Pad to -100 so special tokens are ignored in the loss calculation
-            if token_id in special_token_ids:
-                labels.append(-100)
-            else:
-                labels.append(label2id[tag])
-                
+        labels = [label2id[tag] for tag in tags]
+
         batch_input_ids.append(input_ids)
         batch_attention_mask.append(attention_mask)
         batch_labels.append(labels)
-        
+
     return {
-        "input_ids": batch_input_ids, 
-        "attention_mask": batch_attention_mask, 
-        "labels": batch_labels
+        "input_ids": batch_input_ids,
+        "attention_mask": batch_attention_mask,
+        "labels": batch_labels,
     }
 
 metric = evaluate.load("seqeval")
 
-def compute_metrics(p):
+def compute_metrics(eval_pred):
     """
     Takes the model's raw logits and the true labels, strips out the padding,
     and calculates exact-match span scores.
     """
-    predictions, labels = p
+    predictions = eval_pred.predictions
+    labels = eval_pred.label_ids
 
-    # get the most confident prediction
-    predictions = np.argmax(predictions, axis=2)
+    if isinstance(predictions, tuple):
+        predictions = predictions[0]
+    
+    predictions = np.asarray(predictions)
+    labels = np.asarray(labels)
 
-    # get predictions and labels while ignoring special tokens
+    # get predictions and labels (special tokens are included in these)
     true_predictions = [
-        [id2label[p] for (p, l) in zip(prediction, label) if l != -100]
+        [id2label[p] for p, l in zip(prediction, label) if l != -100]
         for prediction, label in zip(predictions, labels)
     ]
     
     true_labels = [
-        [id2label[l] for (p, l) in zip(prediction, label) if l != -100]
+        [id2label[l] for p, l in zip(prediction, label) if l != -100]
         for prediction, label in zip(predictions, labels)
     ]
 
@@ -157,7 +208,7 @@ training_args = TrainingArguments(
 )
 
 # 6. Initialize and Launch the Trainer
-trainer = Trainer(
+trainer = CRFTrainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_datasets["train"],
