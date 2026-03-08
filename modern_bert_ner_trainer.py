@@ -151,6 +151,8 @@ training_args = TrainingArguments(
     weight_decay=0.01,
     bf16=use_cuda_bf16 or use_mps_bf16,                        # ModernBERT loves bfloat16 precision for faster training
     logging_steps=50,
+    dataloader_num_workers=4,              # Use multiple CPU cores to speed up data loading
+    train_sampling_strategy="group_by_length",              # Group sequences of similar length together for efficiency
     save_strategy="epoch",            # Save a model checkpoint every epoch
 )
 
