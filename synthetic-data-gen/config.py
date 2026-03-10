@@ -16,7 +16,7 @@ CLEAN_DATA = "./datasets/therapy_conversations_clean.jsonl"
 OUTPUT_IOB = "./datasets/therapy_conversations_iob.jsonl"
 MAP_DIR = "synthetic-data-gen/datasets/IOB-dataset-splits"
 RE_OUTPUT_FILE = "./datasets/re_master_data.jsonl"
-RE_TRAINING_DATA_DIR = "./datasets/re_datasets"
+RE_SPLIT_DATA_DIR = "/datasets/re-datasets"
 
 SAMPLING_PARAMS = {
     "temperature": 1.0,

@@ -34,4 +34,4 @@ def create_static_splits(input_file=config.OUTPUT_IOB, output_dir="./datasets/IO
     print(f"Test:  {len(dataset['test'])} rows")
 
 if __name__ == "__main__":
-    create_static_splits()
+    create_static_splits(config.RE_OUTPUT_FILE, config.RE_SPLIT_DATA_DIR)
