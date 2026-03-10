@@ -11,7 +11,8 @@ from transformers import (
     AutoTokenizer, 
     TrainingArguments, 
     Trainer, 
-    DataCollatorForTokenClassification
+    DataCollatorForTokenClassification,
+    EarlyStoppingCallback
 )
 
 import json as js
@@ -192,13 +193,13 @@ tokenized_datasets = dataset.map(
 data_collator = DataCollatorForTokenClassification(tokenizer=tokenizer)
 
 # 5. Define Training Arguments
-training_args = TrainingArguments(
-    output_dir="./therapy-bert-ner",
+phase1_args = TrainingArguments(
+    output_dir="./therapy-bert-ner-phase1",
     eval_strategy="epoch",      # Check performance at the end of each epoch
-    learning_rate=2e-5,               # Standard starting rate for fine-tuning BERT
+    learning_rate=1e-3,               # Aggressive lr for the randomly initialized CRF head to stabilize quickly
     per_device_train_batch_size=4,    # Adjust down to 4 or 2 if your GPU runs out of memory
     per_device_eval_batch_size=8,
-    num_train_epochs=3,               # 3 to 5 epochs is usually the sweet spot for NER
+    num_train_epochs=1,               # 3 to 5 epochs is usually the sweet spot for NER
     weight_decay=0.01,
     bf16=use_cuda_bf16 or use_mps_bf16,                        # ModernBERT loves bfloat16 precision for faster training
     logging_steps=50,
@@ -208,25 +209,69 @@ training_args = TrainingArguments(
 )
 
 # 6. Initialize and Launch the Trainer
-trainer = CRFTrainer(
+phase1_trainer = CRFTrainer(
     model=model,
-    args=training_args,
+    args=phase1_args,
     train_dataset=tokenized_datasets["train"],
     eval_dataset=tokenized_datasets["validation"],
     data_collator=data_collator,
     compute_metrics=compute_metrics,
 )
 
-print(f"trainer device: {trainer.args.device}")
+phase2_args = TrainingArguments(
+    output_dir="./therapy-bert-ner-phase2",
+    eval_strategy="epoch",      # Check performance at the end of each epoch
+    learning_rate=2e-6,               # small learning rate to keep modernbert weights from diverging too much during fine-tuning
+    per_device_train_batch_size=4,    # Adjust down to 4 or 2 if your GPU runs out of memory
+    per_device_eval_batch_size=8,
+    num_train_epochs=10,               # Early stopping run until eval loss starts spiking
+    weight_decay=0.01,
+    bf16=use_cuda_bf16 or use_mps_bf16,                        # ModernBERT loves bfloat16 precision for faster training
+    logging_steps=50,
+    dataloader_num_workers=4,              # Use multiple CPU cores to speed up data loading
+    train_sampling_strategy="group_by_length",              # Group sequences of similar length together for efficiency
+    save_strategy="epoch",            # Save a model checkpoint every epoch
+    metric_for_best_model="eval_loss",        # eval loss for best model selection, since seqeval metrics can be noisy in early stages of training
+    greater_is_better=False,                # lower eval loss is better
+    load_best_model_at_end=True,          # Automatically load the best model when finished training
+)
+
+# 6. Initialize and Launch the Trainer
+phase2_trainer = CRFTrainer(
+    model=model,
+    args=phase2_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["validation"],
+    data_collator=data_collator,
+    compute_metrics=compute_metrics,
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+)
+
+print(f"trainer device: {phase1_args.device}")
 print(f"cuda available: {torch.cuda.is_available()}")
 print(f"mps available: {torch.backends.mps.is_available()}")
-print(f"bf16 enabled: {training_args.bf16}")
+print(f"bf16 enabled: {phase1_args.bf16}")
 
 if __name__ == "__main__":
     print("Initializing ModernBERT-large training...")
-    trainer.train()
+
+    # freeze ModernBERT to prevent system shock from bolting on the CRF head with random weights
+    print("\n--- PHASE 1: Training the CRF Head (Backbone Frozen) ---")
+    for param in model.bert.parameters():
+        param.requires_grad = False
+
+    # Train for just 3 epoch to stabilize the random weights
+    phase1_trainer.train()
+    
+    # Thaw modernbert
+    print("\n--- PHASE 2: Fine-Tuning Entire Model (ModernBERT Thawed) ---")
+    for param in model.bert.parameters():
+        param.requires_grad = True
+    
+    # Continue training seamlessly
+    phase2_trainer.train()
     
     # Save the final pristine model to your hard drive
-    trainer.save_model("./therapy-modernbert-ner-final")
+    phase2_trainer.save_model("./therapy-modernbert-ner-final")
     tokenizer.save_pretrained("./therapy-modernbert-ner-final")
     print("Training complete! Model saved to ./therapy-modernbert-ner-final")

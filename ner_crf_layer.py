@@ -26,7 +26,11 @@ class ModernBERT_CRF(nn.Module):
 
         self.num_labels = num_labels
         self.label2id = dict(label2id)
-        self.id2label = dict(id2label) if id2label is not None else {v: k for k, v in label2id.items()}
+        self.id2label = (
+            {int(key): value for key, value in id2label.items()}
+            if id2label is not None
+            else {value: key for key, value in label2id.items()}
+        )
         self.model_name = model_name
         self.dropout_prob = dropout
 
@@ -38,6 +42,23 @@ class ModernBERT_CRF(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(self.bert.config.hidden_size, num_labels)
         self.crf = CRF(num_labels, batch_first=True)
+
+        # Mathematically disincentivize breaking IOB rules
+        with torch.no_grad():
+            for i in range(num_labels):
+                tag = self.id2label[i]
+                # Rule 1: Sequences cannot START with an I- tag
+                if tag.startswith("I-"):
+                    self.crf.start_transitions.data[i] = -10000.0
+                    
+                # Rule 2: I- tags can only follow B- or I- of the same entity
+                for j in range(num_labels):
+                    next_tag = self.id2label[j]
+                    if next_tag.startswith("I-"):
+                        entity_type = next_tag[2:]
+                        valid_prev = [f"B-{entity_type}", f"I-{entity_type}"]
+                        if tag not in valid_prev:
+                            self.crf.transitions.data[i, j] = -10000.0
 
     def forward(self, input_ids, attention_mask, labels=None, **kwargs):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
