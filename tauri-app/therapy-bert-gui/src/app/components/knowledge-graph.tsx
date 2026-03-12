@@ -484,6 +484,15 @@ export function KnowledgeGraph({
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, isAiTyping]);
 
+  // ── Recenter graph when sidebar opens/closes ──────────────────────────────
+  useEffect(() => {
+    if (sidebarOpen) {
+      setPan((p) => ({ x: p.x - 150, y: p.y }));
+    } else {
+      setPan((p) => ({ x: p.x + 150, y: p.y }));
+    }
+  }, [sidebarOpen]);
+
   // ── Build node map for rendering ──────────────────────────────────────────
   const nodeMap = useMemo(() => {
     const map = new Map<string, SimNode>();
@@ -634,12 +643,12 @@ export function KnowledgeGraph({
                 const AL = 8, AA = 0.4;
 
                 return (
-                  <g key={`edge-${i}`} opacity={edgeOpacity}>
+                  <g key={`edge-${i}`} opacity={edgeOpacity} style={{ pointerEvents: "none" }}>
                     {/* Invisible wider hit area for clicking */}
                     <line
                       x1={s.x} y1={s.y} x2={t.x} y2={t.y}
                       stroke="transparent" strokeWidth={12}
-                      style={{ cursor: "pointer" }}
+                      style={{ cursor: "pointer", pointerEvents: "auto" }}
                       onClick={(e) => handleEdgeClick(edge, e)}
                     />
                     <line
@@ -647,7 +656,6 @@ export function KnowledgeGraph({
                       stroke={edgeColor}
                       strokeWidth={edgeWidth}
                       strokeDasharray={dashArray}
-                      style={{ pointerEvents: "none" }}
                     />
                     {/* Arrowhead */}
                     {!dimmed && dist > 1 && (
@@ -707,7 +715,7 @@ export function KnowledgeGraph({
                 return (
                   <g
                     key={node.id}
-                    style={{ cursor: "pointer" }}
+                    style={{ cursor: "pointer", pointerEvents: "auto" }}
                     onMouseDown={(e) => handleNodeMouseDown(node, e)}
                     onClick={() => handleNodeClick(node)}
                     onMouseEnter={() => setHoveredNode(node)}
