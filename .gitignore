@@ -213,3 +213,6 @@ therapy-bert-ner/*
 therapy-bert-ner-phase1/*
 therapy-bert-ner-phase2/*
 therapy-modernbert-re-final/*
+
+# ignore ladybug db testing
+patients/*

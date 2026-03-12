@@ -49,7 +49,7 @@ def load_custom_model(model_source: str = DEFAULT_MODEL_SOURCE):
 		map_location=device,
 	)
 	model.eval()
-	model.to(device)
+	model.to(device, dtype=torch.bfloat16 if device.type in ["cuda", "mps"] else torch.float32)
 
 	return tokenizer, model, device
 
@@ -158,8 +158,8 @@ if __name__ == "__main__":
 	test_cases = [
 		(
 			"My anxiety has been getting worse since the calls from my ex-husband started again.",
-			"anxiety",
 			"ex-husband",
+			"anxiety",
 		),
 		(
 			"I avoid crowded stores because the flashing lights can trigger a panic attack.",
