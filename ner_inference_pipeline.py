@@ -42,47 +42,58 @@ model.eval()
 def extract_entities(text):
     print(f"\nAnalyzing: '{text}'")
     
-    # Fast tokenization to keep track of word boundaries
+    # Tokenization
     inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=8192)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
+    inputs_to_device = {k: v.to(device) for k, v in inputs.items()}
     
     with torch.no_grad():
-        # The model's forward pass automatically runs the CRF Viterbi decode when labels=None
-        predicted_paths = model.decode(**inputs)
+        # The model's forward pass automatically runs the CRF Viterbi decode
+        predicted_paths = model.decode(**inputs_to_device)
         
     pred_ids = predicted_paths[0]
-    predicted_word_tags = [id2label[pred_id] for pred_id in pred_ids]
+    input_ids = inputs["input_ids"][0].tolist() # Extract the raw integers
     
-    # --- Reconstruct Words from Subwords ---
-    # tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"][0])
     entities = []
     current_entity = None
     
-    for idx, word_idx in enumerate(predicted_word_tags):
-        if word_idx is None:
-            continue # Skip [CLS] and [SEP]
-            
-        tag = id2label[pred_ids[idx]]
-        word = tokenizer.decode(inputs["input_ids"][0][idx]).strip()
+    for idx, tag_id in enumerate(pred_ids):
+        token_id = input_ids[idx]
         
-        # We only care about the B- tags to start a new entity string
+        # PROPERLY skip special tokens ([CLS], [SEP], [PAD])
+        if token_id in tokenizer.all_special_ids:
+            continue
+            
+        tag = id2label[tag_id]
+        
+        # If it's a B- tag, start a new entity
         if tag.startswith("B-"):
             if current_entity:
+                # Decode the accumulated token IDs all at once!
+                current_entity["text"] = tokenizer.decode(current_entity["token_ids"]).strip()
+                del current_entity["token_ids"] # Clean up the dictionary
                 entities.append(current_entity)
-            current_entity = {"type": tag[2:], "text": word}
-        # If it's an I- tag, append the word to the current entity string
+            
+            # Store the raw ID, not the string
+            current_entity = {"type": tag[2:], "token_ids": [token_id]}
+            
+        # If it's an I- tag, append the raw ID to the array
         elif tag.startswith("I-") and current_entity and current_entity["type"] == tag[2:]:
-            current_entity["text"] += f" {word}"
-        # If it's an O tag, save the current entity and reset
+            current_entity["token_ids"].append(token_id)
+            
+        # If it's an O tag, finalize the current entity
         elif tag == "O":
             if current_entity:
+                current_entity["text"] = tokenizer.decode(current_entity["token_ids"]).strip()
+                del current_entity["token_ids"]
                 entities.append(current_entity)
                 current_entity = None
                 
+    # Catch the edge case where the sequence ends exactly on an entity
     if current_entity:
+        current_entity["text"] = tokenizer.decode(current_entity["token_ids"]).strip()
+        del current_entity["token_ids"]
         entities.append(current_entity)
         
-    # --- Print Results Cleanly ---
     if not entities:
         return {"entities": []}
 

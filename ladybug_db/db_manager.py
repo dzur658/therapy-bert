@@ -40,29 +40,29 @@ class PatientGraphDB:
             pass 
 
     def ingest_bert_payload(self, kg_payload):
-        """Merges the ModernBERT JSON output into the patient's graph."""
-        
-        # 1. Upsert Entities
-        for entity in kg_payload["entities"]:
-            self.conn.execute(
-                "MERGE (e:Entity {text: $text}) ON MATCH SET e.label = $label",
-                parameters={"text": entity["text"], "label": entity["label"]}
-            )
+            """Merges the ModernBERT JSON output into the patient's graph."""
+            
+            # 1. Upsert Entities (FIXED CYPHER)
+            for entity in kg_payload["entities"]:
+                self.conn.execute(
+                    "MERGE (e:Entity {text: $text}) SET e.label = $label",
+                    parameters={"text": entity["text"], "label": entity["label"]}
+                )
 
-        # 2. Upsert Relations
-        for rel in kg_payload["relations"]:
-            self.conn.execute("""
-                MATCH (source:Entity {text: $src}), (target:Entity {text: $tgt})
-                MERGE (source)-[r:RELATION {
-                    predicate: $pred, 
-                    proposed_by: $prop, 
-                    patient_acceptance: $acc
-                }]->(target)
-            """, parameters={
-                "src": rel["source"],
-                "tgt": rel["target"],
-                "pred": rel["predicate"],
-                "prop": rel["proposed_by"],
-                "acc": rel["patient_acceptance"]
-            })
-        print(f"Successfully ingested {len(kg_payload['relations'])} relations.")
+            # 2. Upsert Relations
+            for rel in kg_payload["relations"]:
+                self.conn.execute("""
+                    MATCH (source:Entity {text: $src}), (target:Entity {text: $tgt})
+                    MERGE (source)-[r:RELATION {
+                        predicate: $pred, 
+                        proposed_by: $prop, 
+                        patient_acceptance: $acc
+                    }]->(target)
+                """, parameters={
+                    "src": rel["source"],
+                    "tgt": rel["target"],
+                    "pred": rel["predicate"],
+                    "prop": rel["proposed_by"],
+                    "acc": rel["patient_acceptance"]
+                })
+            print(f"Successfully ingested {len(kg_payload['relations'])} relations.")

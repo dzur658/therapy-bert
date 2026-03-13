@@ -372,6 +372,7 @@ def extract_chunk_entities(doc, window: TranscriptWindow) -> Dict[str, dict]:
 		if existing is None or candidate["center_weight"] > existing["center_weight"]:
 			chunk_entities[key] = candidate
 
+	print(chunk_entities)
 	return chunk_entities
 
 
@@ -405,6 +406,11 @@ def extract_window_relations(window: TranscriptWindow, chunk_entities: Dict[str,
 			label = prediction.get("label", "NONE")
 			if label == "NONE":
 				continue
+			
+			model_score = float(prediction.get("score", 0.0))
+			
+			if model_score < 0.50:
+				continue
 
 			predicate = parse_relation_predicate(label)
 			if predicate not in ALLOWED_RELATION_PREDICATES:
@@ -430,7 +436,8 @@ def extract_window_relations(window: TranscriptWindow, chunk_entities: Dict[str,
 				existing["model_score"],
 			):
 				relation_candidates[relation_key] = candidate
-
+	
+	print(relation_candidates)
 	return relation_candidates
 
 
