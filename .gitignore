@@ -218,3 +218,4 @@ therapy-re-phase1/*
 
 # ignore ladybug db testing
 patients/*
+*.lbug

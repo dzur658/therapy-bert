@@ -1,0 +1,4 @@
+# ignore weights directories
+
+therapy-modernbert-ner-final/*
+therapy-modernbert-re-final/*

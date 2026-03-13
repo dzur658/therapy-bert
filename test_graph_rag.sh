@@ -3,7 +3,7 @@
 API_URL="http://127.0.0.1:8091/api/chat"
 # Generate a unique session ID for this specific test run
 SESSION_ID="cli-test-session-$(date +%s)"
-PATIENT_ID="gtc-demo-enmeshment-001"
+PATIENT_ID="gtc-demo-enmeshment-002"
 
 echo "======================================================"
 echo "🧠 Testing Graph RAG Chat API (Streaming & State)"
