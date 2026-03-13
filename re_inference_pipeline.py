@@ -99,7 +99,13 @@ class RelationExtractionInferencePipeline:
 			return predictions
 
 		limited_predictions = predictions[:top_k]
-		return limited_predictions[0] if top_k == 1 else limited_predictions
+
+		if top_k == 1:
+			return limited_predictions[0]
+		else:
+			return limited_predictions
+
+		# return limited_predictions[0] if top_k == 1 else limited_predictions
 
 	def predict_relation(
 		self,

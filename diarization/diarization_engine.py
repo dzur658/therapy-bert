@@ -85,6 +85,8 @@ class DiarizationEngine:
         gc.collect()
         if self.device == "cuda":
             torch.cuda.empty_cache()
+        elif self.device == "mps":
+            torch.mps.empty_cache()
         
         whisper_segments, _ = self.asr_pipeline.transcribe(audio_file_path, beam_size=5, language="en", word_timestamps=True)
 

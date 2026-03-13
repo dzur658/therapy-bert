@@ -11,17 +11,20 @@ from pathlib import Path
 from typing import Dict, List, get_args
 
 import spacy
+import torch
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from ladybug_db.db_manager import PatientGraphDB
-from ner_inference_pipeline import extract_entities
+from ner_inference_pipeline import extract_entities, load_custom_model
 from re_inference_pipeline import RelationExtractionInferencePipeline, mark_entities
 
+import gc
 
-DEFAULT_MAX_CONTEXT_TOKENS = 8192
+
+DEFAULT_MAX_CONTEXT_TOKENS = 4096
 DEFAULT_WINDOW_OVERLAP_TOKENS = 1000
 DEFAULT_RELATION_BATCH_SIZE = 8
 PLACEHOLDER_PROPOSED_BY = "PENDING_FUTURE_MODEL"
@@ -158,11 +161,6 @@ def get_spacy_nlp():
 	if "sentencizer" not in nlp.pipe_names:
 		nlp.add_pipe("sentencizer")
 	return nlp
-
-
-@lru_cache(maxsize=1)
-def get_re_pipeline() -> RelationExtractionInferencePipeline:
-	return RelationExtractionInferencePipeline(max_length=DEFAULT_MAX_CONTEXT_TOKENS)
 
 
 def split_span_by_sentences_or_tokens(doc, start_char: int, end_char: int, max_tokens: int) -> List[ChunkUnit]:
@@ -347,8 +345,8 @@ def parse_relation_predicate(label: str) -> str:
 	return label
 
 
-def extract_chunk_entities(doc, window: TranscriptWindow) -> Dict[str, dict]:
-	ner_output = extract_entities(window.text)
+def extract_chunk_entities(doc, window: TranscriptWindow, tokenizer, model, device) -> Dict[str, dict]:
+	ner_output = extract_entities(window.text, tokenizer, model, device)
 	raw_entities = ner_output.get("entities", [])
 	chunk_entities: Dict[str, dict] = {}
 
@@ -383,8 +381,7 @@ def update_master_entities(master_entities: Dict[str, dict], chunk_entities: Dic
 			master_entities[key] = candidate
 
 
-def extract_window_relations(window: TranscriptWindow, chunk_entities: Dict[str, dict], relation_batch_size: int) -> Dict[tuple[str, str, str], dict]:
-	re_pipeline = get_re_pipeline()
+def extract_window_relations(window: TranscriptWindow, chunk_entities: Dict[str, dict], relation_batch_size: int, re_pipeline: RelationExtractionInferencePipeline) -> Dict[tuple[str, str, str], dict]:
 	entity_texts = [entity["text"] for entity in chunk_entities.values()]
 	pair_candidates = list(itertools.permutations(entity_texts, 2))
 	valid_inputs: List[tuple[str, str, str]] = []
@@ -436,7 +433,7 @@ def extract_window_relations(window: TranscriptWindow, chunk_entities: Dict[str,
 				existing["model_score"],
 			):
 				relation_candidates[relation_key] = candidate
-	
+
 	print(relation_candidates)
 	return relation_candidates
 
@@ -448,22 +445,54 @@ def build_graph_payload(transcript_text: str, turns: List[ReconstructedTurn], co
 
 	master_entities: Dict[str, dict] = {}
 	master_relations: Dict[tuple[str, str, str], dict] = {}
+	window_entities_map: Dict[int, dict] = {}
+
+	print("Loading NER model...")
+	ner_tokenizer, ner_model, ner_device = load_custom_model("./therapy-modernbert-ner-final")
+	ner_device_type = ner_device.type if hasattr(ner_device, "type") else str(ner_device)
 
 	for window in windows:
-		chunk_entities = extract_chunk_entities(doc, window)
-		if not chunk_entities:
-			continue
+		chunk_entities = extract_chunk_entities(doc, window, ner_tokenizer, ner_model, ner_device)
+		window_entities_map[window.index] = chunk_entities
+		if chunk_entities:
+			update_master_entities(master_entities, chunk_entities)
 
-		update_master_entities(master_entities, chunk_entities)
-		chunk_relations = extract_window_relations(window, chunk_entities, config.relation_batch_size)
+	print("Unloading NER model...")
+	del ner_tokenizer
+	del ner_model
+	gc.collect()
+	if ner_device_type == "cuda":
+		torch.cuda.empty_cache()
+	elif ner_device_type == "mps":
+		torch.mps.empty_cache()
 
-		for key, candidate in chunk_relations.items():
-			existing = master_relations.get(key)
-			if existing is None or (candidate["proximity_weight"], candidate["model_score"]) > (
-				existing["proximity_weight"],
-				existing["model_score"],
-			):
-				master_relations[key] = candidate
+	if master_entities:
+		print("Loading RE model...")
+		re_pipeline = RelationExtractionInferencePipeline(max_length=config.max_context_tokens)
+
+		for window in windows:
+			chunk_entities = window_entities_map.get(window.index, {})
+			if not chunk_entities:
+				continue
+
+			chunk_relations = extract_window_relations(window, chunk_entities, config.relation_batch_size, re_pipeline)
+
+			for key, candidate in chunk_relations.items():
+				existing = master_relations.get(key)
+				if existing is None or (candidate["proximity_weight"], candidate["model_score"]) > (
+					existing["proximity_weight"],
+					existing["model_score"],
+				):
+					master_relations[key] = candidate
+
+		print("Unloading RE model...")
+		re_device_type = re_pipeline.device.type if hasattr(re_pipeline.device, "type") else str(re_pipeline.device)
+		del re_pipeline
+		gc.collect()
+		if re_device_type == "cuda":
+			torch.cuda.empty_cache()
+		elif re_device_type == "mps":
+			torch.mps.empty_cache()
 
 	entity_lookup = {entity["text"].lower(): entity for entity in master_entities.values()}
 	relations = []

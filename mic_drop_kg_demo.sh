@@ -74,7 +74,7 @@ for block in blocks:
         })
 
 payload = {
-  "patient_id": "gtc-demo-enmeshment-001",
+  "patient_id": "gtc-demo-enmeshment-002",
   "transcript_payload": {
     "transcript": transcript
   },
@@ -105,7 +105,7 @@ if [ -z "$JOB_ID" ]; then
 fi
 
 echo "✅ Job queued! Job ID: $JOB_ID"
-echo -n "Crunching matrices on Apple Silicon"
+echo -n "Crunching matrices on local metal"
 
 STATUS="processing"
 while [ "$STATUS" == "processing" ]; do

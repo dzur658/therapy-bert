@@ -2,7 +2,7 @@ import torch
 import os
 from huggingface_hub import snapshot_download
 from transformers import AutoTokenizer
-from modern_bert_ner_trainer import ModernBERT_CRF, UNIQUE_LABELS, id2label, label2id
+from ner_crf_layer import ModernBERT_CRF
 
 def _resolve_model_source(model_source):
     if os.path.isdir(model_source):
@@ -21,7 +21,12 @@ def load_custom_model(model_dir):
         tokenizer = AutoTokenizer.from_pretrained(resolved_model_dir)
     except OSError:
         tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-large")
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+
     model = ModernBERT_CRF.from_checkpoint(resolved_model_dir, map_location=device)
     # Use MPS if available, otherwise CPU
     model.eval()
@@ -30,16 +35,16 @@ def load_custom_model(model_dir):
     return tokenizer, model, device
 
 # --- 1. Load the Artifacts ---
-MODEL_DIR = "./therapy-modernbert-ner-final"
-print(f"Loading custom model from {MODEL_DIR}...")
+# MODEL_DIR = "./therapy-modernbert-ner-final"
+# print(f"Loading custom model from {MODEL_DIR}...")
 
-tokenizer, model, device = load_custom_model(MODEL_DIR)
+# tokenizer, model, device = load_custom_model(MODEL_DIR)
 
-model.to(device)
-model.eval()
+# model.to(device)
+# model.eval()
 
 # --- 2. The Inference Engine ---
-def extract_entities(text):
+def extract_entities(text, tokenizer, model, device):
     print(f"\nAnalyzing: '{text}'")
     
     # Tokenization
@@ -63,7 +68,7 @@ def extract_entities(text):
         if token_id in tokenizer.all_special_ids:
             continue
             
-        tag = id2label[tag_id]
+        tag = model.id2label[tag_id]
         
         # If it's a B- tag, start a new entity
         if tag.startswith("B-"):
