@@ -26,82 +26,17 @@ import {
 } from "lucide-react";
 import { KnowledgeGraph } from "./knowledge-graph";
 import { getPatientGraph } from "./mock-graph-data";
-
-// Mock previous sessions
-const MOCK_SESSIONS: Record<string, { id: string; date: string; duration: string; summary: string }[]> = {
-  "1": [
-    { id: "s1", date: "Mar 9, 2026", duration: "52 min", summary: "Explored workplace anxiety triggers and developed a grounding technique toolkit." },
-    { id: "s2", date: "Mar 2, 2026", duration: "48 min", summary: "Discussed self-esteem patterns linked to childhood experiences." },
-    { id: "s3", date: "Feb 23, 2026", duration: "55 min", summary: "Cognitive restructuring around catastrophic thinking patterns." },
-  ],
-  "2": [
-    { id: "s1", date: "Mar 7, 2026", duration: "50 min", summary: "Processing grief stages and developing coping mechanisms." },
-    { id: "s2", date: "Feb 28, 2026", duration: "45 min", summary: "Family dynamics and boundary-setting exercises." },
-  ],
-  "3": [
-    { id: "s1", date: "Mar 10, 2026", duration: "60 min", summary: "EMDR session targeting traumatic memory cluster." },
-    { id: "s2", date: "Mar 3, 2026", duration: "55 min", summary: "Relationship patterns and attachment style exploration." },
-    { id: "s3", date: "Feb 24, 2026", duration: "50 min", summary: "Resilience building through narrative therapy techniques." },
-    { id: "s4", date: "Feb 17, 2026", duration: "58 min", summary: "Safety planning and grounding technique refinement." },
-  ],
-  "4": [
-    { id: "s1", date: "Mar 5, 2026", duration: "45 min", summary: "Sleep hygiene assessment and behavioral activation planning." },
-    { id: "s2", date: "Feb 26, 2026", duration: "42 min", summary: "Exploring social isolation patterns and motivational interviewing." },
-  ],
-  "5": [
-    { id: "s1", date: "Mar 8, 2026", duration: "50 min", summary: "Career values clarification and identity exploration." },
-    { id: "s2", date: "Mar 1, 2026", duration: "47 min", summary: "Mindfulness-based stress reduction introduction." },
-    { id: "s3", date: "Feb 22, 2026", duration: "53 min", summary: "Identity integration work and journaling exercises." },
-  ],
-  "6": [
-    { id: "s1", date: "Mar 6, 2026", duration: "55 min", summary: "Anger management triggers identification and DBT skills." },
-    { id: "s2", date: "Feb 27, 2026", duration: "50 min", summary: "Communication styles analysis and assertiveness training." },
-    { id: "s3", date: "Feb 20, 2026", duration: "52 min", summary: "Boundary-setting role play and cognitive rehearsal." },
-  ],
-};
-
-// Mock diarized transcript preview (first 5 turns)
-const MOCK_DIARIZED_PREVIEW = [
-  { speaker: "SPEAKER_00", text: "Good morning, how have you been feeling since our last session?" },
-  { speaker: "SPEAKER_01", text: "Honestly, not great. I've been having trouble sleeping again and the anxiety has been really bad." },
-  { speaker: "SPEAKER_00", text: "I'm sorry to hear that. Can you tell me more about what's been keeping you up at night?" },
-  { speaker: "SPEAKER_01", text: "It's mostly the anxiety about work. I keep replaying conversations in my head over and over." },
-  { speaker: "SPEAKER_00", text: "That sounds like the rumination pattern we've discussed before. Have you been able to try any of the grounding techniques we practiced?" },
-];
-
-// Full mock diarized transcript — includes SPEAKER_09 (API code for unknown speakers)
-const MOCK_FULL_TRANSCRIPT: { speaker: string; text: string }[] = [
-  { speaker: "SPEAKER_00", text: "Good morning, how have you been feeling since our last session?" },
-  { speaker: "SPEAKER_01", text: "Honestly, not great. I've been having trouble sleeping again and the anxiety has been really bad." },
-  { speaker: "SPEAKER_00", text: "I'm sorry to hear that. Can you tell me more about what's been keeping you up at night?" },
-  { speaker: "SPEAKER_01", text: "It's mostly the anxiety about work. I keep replaying conversations in my head over and over." },
-  { speaker: "SPEAKER_00", text: "That sounds like the rumination pattern we've discussed before. Have you been able to try any of the grounding techniques we practiced?" },
-  { speaker: "SPEAKER_01", text: "I tried the breathing exercise a couple of times but I couldn't really focus on it." },
-  { speaker: "SPEAKER_00", text: "That's okay. It takes practice. What was going through your mind when you tried it?" },
-  { speaker: "SPEAKER_01", text: "I kept thinking about all the things I should be doing instead of just sitting there." },
-  { speaker: "SPEAKER_09", text: "Sorry to interrupt — there's a call on line two for you." },
-  { speaker: "SPEAKER_00", text: "Thank you, I'll take it in just a moment. I apologise for the interruption." },
-  { speaker: "SPEAKER_01", text: "No worries at all, take your time." },
-  { speaker: "SPEAKER_00", text: "Let's continue. You mentioned work anxiety — can you give me a specific example from this week?" },
-  { speaker: "SPEAKER_01", text: "Yes, last Tuesday my manager called a surprise meeting and I completely froze. I couldn't even speak." },
-  { speaker: "SPEAKER_00", text: "What were you feeling in your body at that moment?" },
-  { speaker: "SPEAKER_01", text: "My heart was racing, my palms were sweaty. I just wanted to disappear from the room." },
-  { speaker: "SPEAKER_00", text: "Those are classic fight-or-flight responses. Let's work on recognising those cues earlier." },
-  { speaker: "SPEAKER_01", text: "Is that something that gets easier over time?" },
-  { speaker: "SPEAKER_00", text: "Absolutely — with consistent practice your window of tolerance expands." },
-  { speaker: "SPEAKER_09", text: "Should I close the door for you both?" },
-  { speaker: "SPEAKER_01", text: "Oh, yes please. Thank you." },
-  { speaker: "SPEAKER_00", text: "Thank you. Now — when you notice those early physical signals, that is your window to engage the grounding technique before the anxiety escalates." },
-  { speaker: "SPEAKER_01", text: "Okay. So I should be watching for the racing heart and then act immediately?" },
-  { speaker: "SPEAKER_00", text: "Exactly. Think of it as catching the wave before it crashes rather than trying to swim out of it." },
-  { speaker: "SPEAKER_01", text: "That actually makes a lot of sense the way you put it." },
-];
+import {
+  TranscriptManager,
+  type TranscriptLine,
+  type DbSession,
+} from "../services/transcript-manager";
 
 type PipelineStep =
   | "idle"
   | "file-ready"
   | "diarize-confirm"
-  | "diarizing"
+  | "processing"
   | "speaker-mapping"
   | "unknown-clarification"
   | "bert-confirm"
@@ -109,17 +44,58 @@ type PipelineStep =
   | "complete";
 
 // Per-session row with its own 3-dot menu
+function formatSessionDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function sessionPreview(raw: string): string {
+  try {
+    const data = JSON.parse(raw);
+    const lines: TranscriptLine[] = data.transcript ?? [];
+    const first = lines.slice(0, 3).map((l) => l.text).join(" ");
+    return first.length > 140 ? first.slice(0, 140) + "…" : first;
+  } catch {
+    return "Transcript available";
+  }
+}
+
+function parseTranscriptLines(raw: string): TranscriptLine[] {
+  try {
+    const data = JSON.parse(raw);
+    return (data.transcript as TranscriptLine[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function speakerBadge(speaker: string): { label: string; color: string; bg: string } {
+  if (speaker === "Patient")
+    return { label: "Patient", color: "text-primary", bg: "bg-primary/10" };
+  if (speaker === "Therapist")
+    return { label: "Therapist", color: "text-violet-500", bg: "bg-violet-500/10" };
+  if (speaker === "SPEAKER_09")
+    return { label: "UNKNOWN", color: "text-yellow-600 dark:text-yellow-400", bg: "bg-yellow-500/10" };
+  if (speaker === "SPEAKER_01")
+    return { label: "SPEAKER_01", color: "text-blue-500", bg: "bg-blue-500/10" };
+  if (speaker === "SPEAKER_02")
+    return { label: "SPEAKER_02", color: "text-orange-500", bg: "bg-orange-500/10" };
+  return { label: speaker, color: "text-muted-foreground", bg: "bg-muted/60" };
+}
+
 function SessionRow({
   session,
   index,
   onDelete,
 }: {
-  session: { id: string; date: string; duration: string; summary: string };
+  session: DbSession;
   index: number;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const lines = parseTranscriptLines(session.transcript_json);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -137,64 +113,119 @@ function SessionRow({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay: index * 0.05 }}
-      className="px-6 py-4 hover:bg-muted/20 transition-colors group cursor-pointer"
+      className="group"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-sm text-foreground">{session.date}</span>
-            <span className="text-[11px] text-muted-foreground/60">&middot;</span>
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Clock className="w-3 h-3" />
-              <span className="text-[11px]">{session.duration}</span>
+      {/* Collapsed header row */}
+      <div
+        onClick={() => setExpanded((o) => !o)}
+        className="px-6 py-4 hover:bg-muted/20 transition-colors cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <ChevronRight
+                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                  expanded ? "rotate-90" : ""
+                }`}
+              />
+              <span className="text-sm text-foreground">{formatSessionDate(session.created_at)}</span>
+              <span className="text-[11px] text-muted-foreground/60">&middot;</span>
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Clock className="w-3 h-3" />
+                <span className="text-[11px]">{lines.length} turns</span>
+              </div>
             </div>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {session.summary}
-          </p>
-        </div>
-
-        {/* 3-dot menu */}
-        <div
-          ref={menuRef}
-          className="relative flex-shrink-0 mt-0.5"
-        >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen((o) => !o);
-            }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-muted/60 focus:opacity-100"
-            aria-label="Session options"
-          >
-            <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-
-          <AnimatePresence>
-            {menuOpen && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                transition={{ duration: 0.13, ease: "easeOut" }}
-                className="absolute right-0 top-full mt-1 w-44 bg-card border border-border/60 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] overflow-hidden z-50"
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onDelete(session.id);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-red-500/8 group/del"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                  <span className="text-sm text-red-500">Delete Session</span>
-                </button>
-              </motion.div>
+            {!expanded && (
+              <p className="text-xs text-muted-foreground leading-relaxed pl-5.5">
+                {sessionPreview(session.transcript_json)}
+              </p>
             )}
-          </AnimatePresence>
+          </div>
+
+          {/* 3-dot menu */}
+          <div
+            ref={menuRef}
+            className="relative flex-shrink-0 mt-0.5"
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((o) => !o);
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-muted/60 focus:opacity-100"
+              aria-label="Session options"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+
+            <AnimatePresence>
+              {menuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                  transition={{ duration: 0.13, ease: "easeOut" }}
+                  className="absolute right-0 top-full mt-1 w-44 bg-card border border-border/60 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] overflow-hidden z-50"
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onDelete(session.id);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-red-500/8 group/del"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    <span className="text-sm text-red-500">Delete Session</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
+
+      {/* Expanded transcript view */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="overflow-hidden"
+          >
+            <div className="mx-6 mb-4 bg-secondary/30 border border-border/40 rounded-xl overflow-hidden">
+              {lines.length > 0 ? (
+                <div className="max-h-[420px] overflow-y-auto divide-y divide-border/30">
+                  {lines.map((line, i) => {
+                    const badge = speakerBadge(line.speaker);
+                    return (
+                      <div
+                        key={i}
+                        className="px-4 py-3 flex gap-3"
+                      >
+                        <span
+                          className={`text-[11px] tracking-wide flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-md whitespace-nowrap ${badge.bg} ${badge.color}`}
+                        >
+                          {badge.label}
+                        </span>
+                        <p className="text-xs text-foreground/80 leading-relaxed">
+                          {line.text}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-xs text-muted-foreground">No transcript lines available</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -208,11 +239,15 @@ export function PatientDetailPage() {
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [localSessions, setLocalSessions] = useState<
-    Record<string, { id: string; date: string; duration: string; summary: string }[]>
-  >({ ...MOCK_SESSIONS });
+  const [dbSessions, setDbSessions] = useState<DbSession[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedFileRef = useRef<File | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Live transcript data from DB
+  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
 
   // Pipeline state
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>("idle");
@@ -222,7 +257,7 @@ export function PatientDetailPage() {
   const bertTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Speaker mapping: which speaker is the patient
-  const [patientSpeaker, setPatientSpeaker] = useState<"SPEAKER_00" | "SPEAKER_01" | null>(null);
+  const [patientSpeaker, setPatientSpeaker] = useState<"SPEAKER_01" | "SPEAKER_02" | null>(null);
 
   // Unknown speaker clarification
   const [unknownQueue, setUnknownQueue] = useState<number[]>([]); // indices of SPEAKER_09 in full transcript
@@ -230,10 +265,10 @@ export function PatientDetailPage() {
   const [selectedUnknownRole, setSelectedUnknownRole] = useState<"patient" | "practitioner" | "neither" | null>(null);
 
   // Delete session confirmation states
-  const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(null);
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<number | null>(null);
 
   const patient = patients.find((p) => p.id === patientId);
-  const sessions = patientId ? (localSessions[patientId] ?? []) : [];
+  const sessions = dbSessions;
 
   // Close patient switcher dropdown on outside click
   useEffect(() => {
@@ -247,20 +282,38 @@ export function PatientDetailPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
 
+  // Init DB and load sessions for this patient
+  const loadSessions = async () => {
+    if (!patientId) return;
+    try {
+      await TranscriptManager.init();
+      const rows = await TranscriptManager.getSessionsForPatient(patientId);
+      setDbSessions(rows);
+    } catch (e) {
+      console.error("Failed to load sessions from DB", e);
+    }
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, [patientId]);
+
   // Cleanup timers
   useEffect(() => {
     return () => {
       if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
       if (bertTimerRef.current) clearInterval(bertTimerRef.current);
+      if (pollingRef.current) clearInterval(pollingRef.current);
     };
   }, []);
 
-  const deleteSession = (sessionId: string) => {
-    if (!patientId) return;
-    setLocalSessions((prev) => ({
-      ...prev,
-      [patientId]: (prev[patientId] ?? []).filter((s) => s.id !== sessionId),
-    }));
+  const deleteSession = async (sessionId: number) => {
+    try {
+      await TranscriptManager.deleteSession(sessionId);
+      setDbSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch (e) {
+      console.error("Failed to delete session", e);
+    }
   };
 
   const handleFileSelect = (file: File | null) => {
@@ -270,6 +323,7 @@ export function PatientDetailPage() {
       setUploadError("Only .wav audio files are accepted.");
       return;
     }
+    uploadedFileRef.current = file;
     setUploadedFile(file.name);
     setPipelineStep("file-ready");
   };
@@ -284,13 +338,38 @@ export function PatientDetailPage() {
     setUnknownQueue([]);
     setCurrentUnknownPos(0);
     setSelectedUnknownRole(null);
+    setTranscript([]);
+    setCurrentSessionId(null);
     if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
     if (bertTimerRef.current) clearInterval(bertTimerRef.current);
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    uploadedFileRef.current = null;
   };
 
-  // Called when therapist confirms speaker mapping — checks for SPEAKER_09 unknowns
-  const proceedFromSpeakerMapping = () => {
-    const indices = MOCK_FULL_TRANSCRIPT
+  // Called when therapist confirms speaker mapping — remaps main speakers and checks for unknowns
+  const proceedFromSpeakerMapping = async () => {
+    if (!patientSpeaker) return;
+
+    // Remap SPEAKER_01/02 to Patient/Therapist in memory
+    const remapped = transcript.map((line) => {
+      if (line.speaker === patientSpeaker) return { ...line, speaker: "Patient" };
+      if (line.speaker === "SPEAKER_01" || line.speaker === "SPEAKER_02")
+        return { ...line, speaker: "Therapist" };
+      return line;
+    });
+    setTranscript(remapped);
+
+    // Persist remapped transcript to DB if session exists
+    if (currentSessionId !== null) {
+      try {
+        await TranscriptManager.persistTranscript(currentSessionId, remapped);
+      } catch (e) {
+        console.error("Failed to persist speaker remap to DB", e);
+      }
+    }
+
+    // Check for SPEAKER_09 unknowns using the remapped transcript
+    const indices = remapped
       .map((t, i) => (t.speaker === "SPEAKER_09" ? i : -1))
       .filter((i) => i !== -1);
     if (indices.length > 0) {
@@ -304,28 +383,148 @@ export function PatientDetailPage() {
   };
 
   // Move to next unknown or proceed to BERT confirmation
-  const confirmUnknownAndAdvance = () => {
-    const nextPos = currentUnknownPos + 1;
-    if (nextPos < unknownQueue.length) {
-      setCurrentUnknownPos(nextPos);
-      setSelectedUnknownRole(null);
+  const confirmUnknownAndAdvance = async () => {
+    if (!selectedUnknownRole) return;
+    const lineIndex = unknownQueue[currentUnknownPos];
+
+    if (selectedUnknownRole === "neither") {
+      // Remove the line in memory
+      const updated = transcript.filter((_, i) => i !== lineIndex);
+      setTranscript(updated);
+
+      // Persist to DB if session exists
+      if (currentSessionId !== null) {
+        try {
+          await TranscriptManager.persistTranscript(currentSessionId, updated);
+        } catch (e) {
+          console.error("Failed to persist line removal to DB", e);
+        }
+      }
+
+      // Adjust remaining unknown indices after removal
+      const adjusted = unknownQueue
+        .filter((_, i) => i !== currentUnknownPos)
+        .map((idx) => (idx > lineIndex ? idx - 1 : idx));
+      setUnknownQueue(adjusted);
+
+      // After removal, stay at same position (which now points to next) or finish
+      if (adjusted.length > 0 && currentUnknownPos < adjusted.length) {
+        setSelectedUnknownRole(null);
+      } else if (adjusted.length > 0) {
+        setCurrentUnknownPos(adjusted.length - 1);
+        setSelectedUnknownRole(null);
+      } else {
+        setPipelineStep("bert-confirm");
+      }
     } else {
-      setPipelineStep("bert-confirm");
+      const label = selectedUnknownRole === "patient" ? "Patient" : "Therapist";
+      // Update the line in memory
+      const updated = transcript.map((line, i) =>
+        i === lineIndex ? { ...line, speaker: label } : line
+      );
+      setTranscript(updated);
+
+      // Persist to DB if session exists
+      if (currentSessionId !== null) {
+        try {
+          await TranscriptManager.persistTranscript(currentSessionId, updated);
+        } catch (e) {
+          console.error("Failed to persist speaker update to DB", e);
+        }
+      }
+
+      const nextPos = currentUnknownPos + 1;
+      if (nextPos < unknownQueue.length) {
+        setCurrentUnknownPos(nextPos);
+        setSelectedUnknownRole(null);
+      } else {
+        setPipelineStep("bert-confirm");
+      }
     }
   };
 
-  const startDiarization = () => {
-    setPipelineStep("diarizing");
+  const startDiarization = async () => {
+    const file = uploadedFileRef.current;
+    if (!file) return;
+
+    setPipelineStep("processing");
     setDiarizeElapsed(0);
     diarizeTimerRef.current = setInterval(() => {
       setDiarizeElapsed((prev) => prev + 1);
     }, 1000);
-    // Mock: complete after ~10 seconds
-    setTimeout(() => {
+
+    try {
+      const formData = new FormData();
+      formData.append("audio_file", file);
+
+      // Add the patientId from the URL params to the form data
+      if (patientId) {
+        formData.append("patient_id", patientId);
+      }
+
+      if (patient?.name) {
+        formData.append("patient_name", patient.name)
+      }
+
+      const uploadRes = await fetch("http://localhost:8085/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({ detail: "Upload failed" }));
+        throw new Error(err.detail ?? "Upload failed");
+      }
+
+      const { job_id } = await uploadRes.json();
+
+      // Poll for completion
+      pollingRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`http://localhost:8085/api/jobs/${encodeURIComponent(job_id)}`);
+          if (!pollRes.ok) return;
+          const data = await pollRes.json();
+
+          if (data.status === "completed") {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
+
+            // Extract transcript lines from API response and save to Tauri DB
+            const lines: TranscriptLine[] = data.transcript?.transcript ?? [];
+            setTranscript(lines);
+
+            if (patientId && patient?.name) {
+              try {
+                const newId = await TranscriptManager.saveTranscript(
+                  patientId,
+                  patient.name,
+                  lines
+                );
+                setCurrentSessionId(newId);
+                // Refresh session list
+                loadSessions();
+              } catch (e) {
+                console.error("Failed to save transcript to DB", e);
+              }
+            }
+
+            setPipelineStep("speaker-mapping");
+            setPatientSpeaker(null);
+          } else if (data.status === "failed") {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
+            setUploadError(data.error ?? "Diarization failed");
+            setPipelineStep("file-ready");
+          }
+        } catch {
+          // Polling network error — keep retrying
+        }
+      }, 3000);
+    } catch (err) {
       if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
-      setPipelineStep("speaker-mapping");
-      setPatientSpeaker(null);
-    }, 10000);
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setPipelineStep("file-ready");
+    }
   };
 
   const startBertProcessing = () => {
@@ -724,24 +923,26 @@ export function PatientDetailPage() {
 
                     {/* Transcript preview */}
                     <div className="bg-secondary/30 border border-border/40 rounded-xl overflow-hidden mb-5">
-                      {MOCK_DIARIZED_PREVIEW.map((turn, i) => (
+                      {transcript.slice(0, 5).map((turn, i) => (
                         <motion.div
                           key={i}
                           initial={{ opacity: 0, x: -6 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.08 }}
                           className={`px-4 py-3 flex gap-3 ${
-                            i < MOCK_DIARIZED_PREVIEW.length - 1 ? "border-b border-border/30" : ""
+                            i < Math.min(transcript.length, 5) - 1 ? "border-b border-border/30" : ""
                           }`}
                         >
                           <span
                             className={`text-[11px] tracking-wide flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-md ${
-                              turn.speaker === "SPEAKER_00"
+                              turn.speaker === "SPEAKER_09"
+                                ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400"
+                                : turn.speaker === "SPEAKER_01"
                                 ? "bg-blue-500/10 text-blue-500"
                                 : "bg-orange-500/10 text-orange-500"
                             }`}
                           >
-                            {turn.speaker}
+                            {turn.speaker === "SPEAKER_09" ? "UNKNOWN" : turn.speaker}
                           </span>
                           <p className="text-xs text-foreground/80 leading-relaxed">
                             {turn.text}
@@ -757,27 +958,6 @@ export function PatientDetailPage() {
                       </p>
                       <div className="flex gap-3">
                         <button
-                          onClick={() => setPatientSpeaker("SPEAKER_00")}
-                          className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all duration-200 text-left ${
-                            patientSpeaker === "SPEAKER_00"
-                              ? "border-primary bg-primary/8 shadow-[0_0_0_2px_rgba(14,165,160,0.12)]"
-                              : "border-border/60 hover:border-primary/30"
-                          }`}
-                        >
-                          <span className="text-[11px] tracking-wide px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">
-                            SPEAKER_00
-                          </span>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {patientSpeaker === "SPEAKER_00" ? (
-                              <span className="text-primary">= Patient</span>
-                            ) : patientSpeaker === "SPEAKER_01" ? (
-                              <span className="text-violet-500">= Practitioner</span>
-                            ) : (
-                              "Select role"
-                            )}
-                          </p>
-                        </button>
-                        <button
                           onClick={() => setPatientSpeaker("SPEAKER_01")}
                           className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all duration-200 text-left ${
                             patientSpeaker === "SPEAKER_01"
@@ -785,13 +965,34 @@ export function PatientDetailPage() {
                               : "border-border/60 hover:border-primary/30"
                           }`}
                         >
-                          <span className="text-[11px] tracking-wide px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-500">
+                          <span className="text-[11px] tracking-wide px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">
                             SPEAKER_01
                           </span>
                           <p className="text-xs text-muted-foreground mt-2">
                             {patientSpeaker === "SPEAKER_01" ? (
                               <span className="text-primary">= Patient</span>
-                            ) : patientSpeaker === "SPEAKER_00" ? (
+                            ) : patientSpeaker === "SPEAKER_02" ? (
+                              <span className="text-violet-500">= Practitioner</span>
+                            ) : (
+                              "Select role"
+                            )}
+                          </p>
+                        </button>
+                        <button
+                          onClick={() => setPatientSpeaker("SPEAKER_02")}
+                          className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all duration-200 text-left ${
+                            patientSpeaker === "SPEAKER_02"
+                              ? "border-primary bg-primary/8 shadow-[0_0_0_2px_rgba(14,165,160,0.12)]"
+                              : "border-border/60 hover:border-primary/30"
+                          }`}
+                        >
+                          <span className="text-[11px] tracking-wide px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-500">
+                            SPEAKER_02
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {patientSpeaker === "SPEAKER_02" ? (
+                              <span className="text-primary">= Patient</span>
+                            ) : patientSpeaker === "SPEAKER_01" ? (
                               <span className="text-violet-500">= Practitioner</span>
                             ) : (
                               "Select role"
@@ -829,8 +1030,8 @@ export function PatientDetailPage() {
                 {pipelineStep === "unknown-clarification" && (() => {
                   const unknownIdx = unknownQueue[currentUnknownPos];
                   const contextStart = Math.max(0, unknownIdx - 5);
-                  const contextEnd = Math.min(MOCK_FULL_TRANSCRIPT.length - 1, unknownIdx + 5);
-                  const contextLines = MOCK_FULL_TRANSCRIPT.slice(contextStart, contextEnd + 1);
+                  const contextEnd = Math.min(transcript.length - 1, unknownIdx + 5);
+                  const contextLines = transcript.slice(contextStart, contextEnd + 1);
 
                   const getSpeakerLabel = (spk: string, lineIdx: number): { label: string; color: string; bg: string } => {
                     const absIdx = contextStart + lineIdx;
@@ -840,15 +1041,15 @@ export function PatientDetailPage() {
                       }
                       return { label: "UNKNOWN", color: "text-muted-foreground", bg: "bg-muted/60" };
                     }
-                    if (!patientSpeaker) {
-                      return spk === "SPEAKER_00"
-                        ? { label: "SPEAKER_00", color: "text-blue-500", bg: "bg-blue-500/10" }
-                        : { label: "SPEAKER_01", color: "text-orange-500", bg: "bg-orange-500/10" };
+                    if (spk === "Patient") {
+                      return { label: "Patient", color: "text-primary", bg: "bg-primary/10" };
                     }
-                    const isPatient = spk === patientSpeaker;
-                    return isPatient
-                      ? { label: "Patient", color: "text-primary", bg: "bg-primary/10" }
-                      : { label: "Practitioner", color: "text-violet-500", bg: "bg-violet-500/10" };
+                    if (spk === "Therapist") {
+                      return { label: "Therapist", color: "text-violet-500", bg: "bg-violet-500/10" };
+                    }
+                    return spk === "SPEAKER_01"
+                      ? { label: "SPEAKER_01", color: "text-blue-500", bg: "bg-blue-500/10" }
+                      : { label: spk, color: "text-orange-500", bg: "bg-orange-500/10" };
                   };
 
                   return (
@@ -948,7 +1149,7 @@ export function PatientDetailPage() {
                             <p className="text-xs text-muted-foreground mt-2">
                               {patientSpeaker ? (
                                 <span className="text-muted-foreground/80">
-                                  {patientSpeaker === "SPEAKER_00" ? "SPEAKER_01" : "SPEAKER_00"}
+                                  {patientSpeaker === "SPEAKER_01" ? "SPEAKER_02" : "SPEAKER_01"}
                                 </span>
                               ) : (
                                 "The therapist"
@@ -1233,7 +1434,7 @@ export function PatientDetailPage() {
 
       {/* ===== Diarization Processing Animation Modal ===== */}
       <AnimatePresence>
-        {pipelineStep === "diarizing" && (
+        {pipelineStep === "processing" && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
