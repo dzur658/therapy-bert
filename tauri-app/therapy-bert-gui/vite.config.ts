@@ -30,14 +30,14 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
-    resolve: {
-      alias: {
-        // Alias @ to the src directory
-        '@': path.resolve(__dirname, './src'),
-      },
-    },
-    
-    // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
-    assetsInclude: ['**/*.svg', '**/*.csv'],
   },
+
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+
+  // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
+  assetsInclude: ['**/*.svg', '**/*.csv'],
 }));

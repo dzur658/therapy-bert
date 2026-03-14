@@ -1,6 +1,7 @@
 import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from typing import Dict, List
@@ -10,6 +11,14 @@ import uvicorn
 from kg.ladybug_db.db_manager import PatientGraphDB
 
 app = FastAPI(title="Therapy Knowledge Graph API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Point to your local LiteLLM / Llama.cpp instance
 aclient = AsyncOpenAI(api_key="sk-local-demo", base_url="http://192.168.1.110:8090/v1")

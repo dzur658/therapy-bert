@@ -5,26 +5,22 @@ import { X, UserPlus, ArrowRight } from "lucide-react";
 interface NewPatientModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (patient: {
-    name: string;
-    age: number;
-    notes: string;
-  }) => void;
+  onAdd: (data: { name: string }) => void | Promise<void>;
+  addError?: string | null;
 }
 
-export function NewPatientModal({ isOpen, onClose, onAdd }: NewPatientModalProps) {
+export function NewPatientModal({ isOpen, onClose, onAdd, addError }: NewPatientModalProps) {
   const [name, setName] = useState("");
-  const [age, setAge] = useState("");
-  const [notes, setNotes] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && age) {
-      onAdd({ name: name.trim(), age: parseInt(age), notes: notes.trim() });
+    if (!name.trim()) return;
+    try {
+      await onAdd({ name: name.trim() });
       setName("");
-      setAge("");
-      setNotes("");
       onClose();
+    } catch {
+      // Error surfaced via addError / patientsError
     }
   };
 
@@ -74,6 +70,9 @@ export function NewPatientModal({ isOpen, onClose, onAdd }: NewPatientModalProps
 
               {/* Form */}
               <form onSubmit={handleSubmit} className="px-6 pb-6">
+                {addError && (
+                  <p className="mb-4 text-sm text-destructive">{addError}</p>
+                )}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1.5 uppercase tracking-wider">
@@ -88,34 +87,6 @@ export function NewPatientModal({ isOpen, onClose, onAdd }: NewPatientModalProps
                       autoFocus
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1.5 uppercase tracking-wider">
-                      Age
-                    </label>
-                    <input
-                      type="number"
-                      value={age}
-                      onChange={(e) => setAge(e.target.value)}
-                      placeholder="Enter age"
-                      min={1}
-                      max={120}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input-background border border-border/60 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1.5 uppercase tracking-wider">
-                      Initial Notes (Optional)
-                    </label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Any relevant background or intake notes..."
-                      rows={3}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input-background border border-border/60 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all resize-none"
-                    />
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 mt-6">
@@ -128,7 +99,7 @@ export function NewPatientModal({ isOpen, onClose, onAdd }: NewPatientModalProps
                   </button>
                   <button
                     type="submit"
-                    disabled={!name.trim() || !age}
+                    disabled={!name.trim()}
                     className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     <span>Add Patient</span>

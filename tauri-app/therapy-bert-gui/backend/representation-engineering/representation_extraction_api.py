@@ -139,5 +139,4 @@ async def analyze_transcript(request: PatientRequest):
     )
 
 if __name__ == "__main__":
-    # Runs the server on port 8000
-    uvicorn.run(app, host="0.0.0.0", port=8086)
+    uvicorn.run(app, host="0.0.0.0", port=8087)

@@ -1,16 +1,14 @@
 import { motion } from "motion/react";
-import { Users, Brain, FileText } from "lucide-react";
+import { Users, FileText } from "lucide-react";
 
 interface StatsBarProps {
   totalPatients: number;
-  totalNodes: number;
   totalSessions: number;
 }
 
-export function StatsBar({ totalPatients, totalNodes, totalSessions }: StatsBarProps) {
+export function StatsBar({ totalPatients, totalSessions }: StatsBarProps) {
   const stats = [
     { label: "Patients", value: totalPatients, icon: Users, color: "text-primary" },
-    { label: "Graph Nodes", value: totalNodes.toLocaleString(), icon: Brain, color: "text-violet-500" },
     { label: "Total Sessions", value: totalSessions, icon: FileText, color: "text-amber-500" },
   ];
 
@@ -19,7 +17,7 @@ export function StatsBar({ totalPatients, totalNodes, totalSessions }: StatsBarP
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.1 }}
-      className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-8"
+      className="grid grid-cols-2 gap-3 mb-8"
     >
       {stats.map((stat) => (
         <div

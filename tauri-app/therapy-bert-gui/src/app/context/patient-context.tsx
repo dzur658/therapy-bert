@@ -1,16 +1,12 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { PatientService } from "../services/patient-service";
 
 export interface Patient {
   id: string;
   name: string;
   initials: string;
-  age: number;
   sessionsCompleted: number;
   lastSession: string;
-  nextSession: string;
-  graphNodes: number;
-  graphEdges: number;
-  topThemes: string[];
   accentColor: string;
 }
 
@@ -27,102 +23,70 @@ const ACCENT_COLORS = [
   "#e11d48",
 ];
 
-const initialPatients: Patient[] = [
-  {
-    id: "1",
-    name: "Sarah Mitchell",
-    initials: "SM",
-    age: 34,
-    sessionsCompleted: 24,
-    lastSession: "Mar 9",
-    nextSession: "Mar 14",
-    graphNodes: 187,
-    graphEdges: 312,
-    topThemes: ["Anxiety", "Work Stress", "Self-Esteem"],
-    accentColor: ACCENT_COLORS[0],
-  },
-  {
-    id: "2",
-    name: "James Rivera",
-    initials: "JR",
-    age: 28,
-    sessionsCompleted: 12,
-    lastSession: "Mar 7",
-    nextSession: "Mar 16",
-    graphNodes: 94,
-    graphEdges: 158,
-    topThemes: ["Grief", "Family Dynamics", "Coping"],
-    accentColor: ACCENT_COLORS[1],
-  },
-  {
-    id: "3",
-    name: "Amara Chen",
-    initials: "AC",
-    age: 41,
-    sessionsCompleted: 38,
-    lastSession: "Mar 10",
-    nextSession: "Mar 12",
-    graphNodes: 342,
-    graphEdges: 578,
-    topThemes: ["PTSD", "Relationships", "Resilience"],
-    accentColor: ACCENT_COLORS[2],
-  },
-  {
-    id: "4",
-    name: "David Okafor",
-    initials: "DO",
-    age: 52,
-    sessionsCompleted: 8,
-    lastSession: "Mar 5",
-    nextSession: "Mar 18",
-    graphNodes: 56,
-    graphEdges: 87,
-    topThemes: ["Depression", "Isolation", "Sleep"],
-    accentColor: ACCENT_COLORS[3],
-  },
-  {
-    id: "5",
-    name: "Elena Vasquez",
-    initials: "EV",
-    age: 29,
-    sessionsCompleted: 16,
-    lastSession: "Mar 8",
-    nextSession: "Mar 15",
-    graphNodes: 128,
-    graphEdges: 214,
-    topThemes: ["Identity", "Career", "Mindfulness"],
-    accentColor: ACCENT_COLORS[4],
-  },
-  {
-    id: "6",
-    name: "Marcus Webb",
-    initials: "MW",
-    age: 45,
-    sessionsCompleted: 31,
-    lastSession: "Mar 6",
-    nextSession: "Mar 13",
-    graphNodes: 265,
-    graphEdges: 421,
-    topThemes: ["Anger", "Communication", "Boundaries"],
-    accentColor: ACCENT_COLORS[5],
-  },
-];
+function formatLastSession(isoDate: string | null): string {
+  if (!isoDate) return "—";
+  try {
+    const d = new Date(isoDate);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+function getInitials(name: string): string {
+  const names = name.trim().split(/\s+/);
+  if (names.length >= 2) {
+    return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase() || "—";
+}
 
 interface PatientContextValue {
   patients: Patient[];
   setPatients: React.Dispatch<React.SetStateAction<Patient[]>>;
-  addPatient: (data: { name: string; age: number; notes: string }) => void;
+  addPatient: (data: { name: string }) => Promise<void>;
   deletePatient: (id: string) => void;
   movePatient: (dragIndex: number, hoverIndex: number) => void;
   isDark: boolean;
   toggleDark: () => void;
+  patientsLoading: boolean;
+  patientsError: string | null;
+  refetchPatients: () => Promise<void>;
 }
 
 const PatientContext = createContext<PatientContextValue | null>(null);
 
 export function PatientProvider({ children }: { children: ReactNode }) {
-  const [patients, setPatients] = useState<Patient[]>(initialPatients);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(true);
+  const [patientsError, setPatientsError] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
+
+  const fetchPatients = useCallback(async () => {
+    setPatientsLoading(true);
+    setPatientsError(null);
+    try {
+      const data = await PatientService.getPatients();
+      const mapped: Patient[] = data.map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        initials: getInitials(p.name),
+        sessionsCompleted: p.session_count,
+        lastSession: formatLastSession(p.last_session),
+        accentColor: ACCENT_COLORS[i % ACCENT_COLORS.length],
+      }));
+      setPatients(mapped);
+    } catch (e) {
+      setPatientsError(e instanceof Error ? e.message : "Failed to load patients");
+      setPatients([]);
+    } finally {
+      setPatientsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
@@ -131,33 +95,36 @@ export function PatientProvider({ children }: { children: ReactNode }) {
   const toggleDark = useCallback(() => setIsDark((d) => !d), []);
 
   const addPatient = useCallback(
-    (data: { name: string; age: number; notes: string }) => {
-      const names = data.name.split(" ");
-      const initials =
-        names.length >= 2
-          ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
-          : data.name.slice(0, 2).toUpperCase();
-
-      const newPatient: Patient = {
-        id: Date.now().toString(),
-        name: data.name,
-        initials,
-        age: data.age,
-        sessionsCompleted: 0,
-        lastSession: "N/A",
-        nextSession: "TBD",
-        graphNodes: 0,
-        graphEdges: 0,
-        topThemes: [],
-        accentColor: ACCENT_COLORS[patients.length % ACCENT_COLORS.length],
-      };
-      setPatients((prev) => [newPatient, ...prev]);
+    async (data: { name: string }) => {
+      setPatientsError(null);
+      try {
+        const created = await PatientService.createPatient(data.name);
+        const newPatient: Patient = {
+          id: created.id,
+          name: created.name,
+          initials: getInitials(created.name),
+          sessionsCompleted: 0,
+          lastSession: "—",
+          accentColor: ACCENT_COLORS[patients.length % ACCENT_COLORS.length],
+        };
+        setPatients((prev) => [newPatient, ...prev]);
+      } catch (e) {
+        setPatientsError(e instanceof Error ? e.message : "Failed to add patient");
+        throw e;
+      }
     },
     [patients.length]
   );
 
-  const deletePatient = useCallback((id: string) => {
-    setPatients((prev) => prev.filter((p) => p.id !== id));
+  const deletePatient = useCallback(async (id: string) => {
+    setPatientsError(null);
+    try {
+      await PatientService.deletePatient(id);
+      setPatients((prev) => prev.filter((p) => p.id !== id));
+    } catch (e) {
+      setPatientsError(e instanceof Error ? e.message : "Failed to delete patient");
+      throw e;
+    }
   }, []);
 
   const movePatient = useCallback((dragIndex: number, hoverIndex: number) => {
@@ -171,7 +138,18 @@ export function PatientProvider({ children }: { children: ReactNode }) {
 
   return (
     <PatientContext.Provider
-      value={{ patients, setPatients, addPatient, deletePatient, movePatient, isDark, toggleDark }}
+      value={{
+        patients,
+        setPatients,
+        addPatient,
+        deletePatient,
+        movePatient,
+        isDark,
+        toggleDark,
+        patientsLoading,
+        patientsError,
+        refetchPatients: fetchPatients,
+      }}
     >
       {children}
     </PatientContext.Provider>

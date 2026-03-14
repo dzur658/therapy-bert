@@ -51,8 +51,8 @@ app = FastAPI(title="Therapy Knowledge Graph API")
 
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=["http://localhost:3000"],
-	allow_credentials=True,
+	allow_origins=["*"],
+	allow_credentials=False,
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
@@ -557,6 +557,66 @@ def process_knowledge_graph_job(job_id: str, request_payload: dict):
 	except Exception as exc:
 		job_store[job_id]["status"] = "failed"
 		job_store[job_id]["error"] = str(exc)
+
+
+def export_graph_from_db(patient_id: str) -> dict:
+	"""Exports entities and relations from the patient's LadybugDB. Returns empty graph if db doesn't exist."""
+	try:
+		db = PatientGraphDB(str(patient_id))
+		query = """
+			MATCH (n)
+			OPTIONAL MATCH (n)-[r]->(m)
+			RETURN n, r, m
+		"""
+		results = db.conn.execute(query)
+		entities_map: Dict[str, dict] = {}
+		relations: List[dict] = []
+		seen_relation_keys: set = set()
+
+		while results.has_next():
+			row = results.get_next()
+			node_1 = row[0]
+			relation = row[1]
+			node_2 = row[2]
+
+			if node_1:
+				n_text = node_1.get("text", "")
+				n_label = node_1.get("label", "Entity")
+				if n_text and n_text not in entities_map:
+					entities_map[n_text] = {"text": n_text, "label": n_label}
+
+			if relation and node_2:
+				m_text = node_2.get("text", "")
+				m_label = node_2.get("label", "Entity")
+				if m_text and m_text not in entities_map:
+					entities_map[m_text] = {"text": m_text, "label": m_label}
+				src = node_1.get("text", "") if node_1 else ""
+				tgt = m_text
+				pred = relation.get("predicate", "RELATES_TO")
+				prop = relation.get("proposed_by", "PENDING_FUTURE_MODEL")
+				acc = relation.get("patient_acceptance", "PENDING_FUTURE_MODEL")
+				rel_key = (src, pred, tgt)
+				if src and tgt and rel_key not in seen_relation_keys:
+					seen_relation_keys.add(rel_key)
+					relations.append({
+						"source": src,
+						"predicate": pred,
+						"target": tgt,
+						"proposed_by": prop,
+						"patient_acceptance": acc,
+					})
+
+		entities = list(entities_map.values())
+		return {"entities": entities, "relations": relations}
+	except Exception as e:
+		print(f"Failed to export graph for patient {patient_id}: {e}")
+		return {"entities": [], "relations": []}
+
+
+@app.get("/api/graph/{patient_id}")
+async def get_patient_graph(patient_id: str):
+	"""Returns the knowledge graph for a patient from LadybugDB."""
+	return export_graph_from_db(patient_id)
 
 
 @app.post("/api/knowledge-graph")

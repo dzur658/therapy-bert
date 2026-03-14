@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { useParams, useNavigate } from "react-router";
 import { usePatients } from "../context/patient-context";
 import { motion, AnimatePresence } from "motion/react";
@@ -24,8 +25,7 @@ import {
   HelpCircle,
   ChevronRight,
 } from "lucide-react";
-import { KnowledgeGraph } from "./knowledge-graph";
-import { getPatientGraph } from "./mock-graph-data";
+import { KnowledgeGraph, type KnowledgeGraphData } from "./knowledge-graph";
 import {
   TranscriptManager,
   type TranscriptLine,
@@ -90,7 +90,7 @@ function SessionRow({
 }: {
   session: DbSession;
   index: number;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -247,7 +247,7 @@ export function PatientDetailPage() {
 
   // Live transcript data from DB
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Pipeline state
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>("idle");
@@ -265,7 +265,13 @@ export function PatientDetailPage() {
   const [selectedUnknownRole, setSelectedUnknownRole] = useState<"patient" | "practitioner" | "neither" | null>(null);
 
   // Delete session confirmation states
-  const [deleteSessionTarget, setDeleteSessionTarget] = useState<number | null>(null);
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(null);
+
+  // Graph data from API
+  const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const bertPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const patient = patients.find((p) => p.id === patientId);
   const sessions = dbSessions;
@@ -298,16 +304,40 @@ export function PatientDetailPage() {
     loadSessions();
   }, [patientId]);
 
+  const loadGraph = useCallback(async () => {
+    if (!patientId) return;
+    setGraphLoading(true);
+    setGraphError(null);
+    try {
+      const res = await fetch(`http://127.0.0.1:8086/api/graph/${encodeURIComponent(patientId)}`);
+      if (!res.ok) throw new Error(`Failed to fetch graph: ${res.status}`);
+      const data = await res.json();
+      setGraphData(data);
+    } catch (e) {
+      setGraphError(e instanceof Error ? e.message : "Failed to load graph");
+      setGraphData(null);
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [patientId]);
+
+  useEffect(() => {
+    if (activeView === "graph" && patientId) {
+      loadGraph();
+    }
+  }, [activeView, patientId, loadGraph]);
+
   // Cleanup timers
   useEffect(() => {
     return () => {
       if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
       if (bertTimerRef.current) clearInterval(bertTimerRef.current);
       if (pollingRef.current) clearInterval(pollingRef.current);
+      if (bertPollingRef.current) clearInterval(bertPollingRef.current);
     };
   }, []);
 
-  const deleteSession = async (sessionId: number) => {
+  const deleteSession = async (sessionId: string) => {
     try {
       await TranscriptManager.deleteSession(sessionId);
       setDbSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -447,8 +477,14 @@ export function PatientDetailPage() {
     const file = uploadedFileRef.current;
     if (!file) return;
 
-    setPipelineStep("processing");
-    setDiarizeElapsed(0);
+    // flushSync forces React to paint the loading modal before the async fetch begins.
+    // Without this, React 18's automatic batching can collapse the "processing" state
+    // with a subsequent error state, making the modal invisible to the user.
+    flushSync(() => {
+      setPipelineStep("processing");
+      setDiarizeElapsed(0);
+    });
+
     diarizeTimerRef.current = setInterval(() => {
       setDiarizeElapsed((prev) => prev + 1);
     }, 1000);
@@ -489,27 +525,21 @@ export function PatientDetailPage() {
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
 
-            // Extract transcript lines from API response and save to Tauri DB
+            // Extract transcript lines from API response
             const lines: TranscriptLine[] = data.transcript?.transcript ?? [];
             setTranscript(lines);
-
-            if (patientId && patient?.name) {
-              try {
-                const newId = await TranscriptManager.saveTranscript(
-                  patientId,
-                  patient.name,
-                  lines
-                );
-                setCurrentSessionId(newId);
-                // Refresh session list
-                loadSessions();
-              } catch (e) {
-                console.error("Failed to save transcript to DB", e);
-              }
-            }
-
             setPipelineStep("speaker-mapping");
             setPatientSpeaker(null);
+
+            // Save to DB in background — don't block the transition to speaker mapping
+            if (patientId && patient?.name) {
+              TranscriptManager.saveTranscript(patientId, patient.name, lines)
+                .then((newId) => {
+                  setCurrentSessionId(newId);
+                  loadSessions();
+                })
+                .catch((e) => console.error("Failed to save transcript to DB", e));
+            }
           } else if (data.status === "failed") {
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (diarizeTimerRef.current) clearInterval(diarizeTimerRef.current);
@@ -527,17 +557,69 @@ export function PatientDetailPage() {
     }
   };
 
-  const startBertProcessing = () => {
-    setPipelineStep("bert-processing");
-    setBertElapsed(0);
+  const startBertProcessing = async () => {
+    if (!patientId || transcript.length === 0) return;
+
+    // Same flushSync pattern: force the BERT processing modal to paint before
+    // the network request begins, so it's always visible during the long KG job.
+    flushSync(() => {
+      setPipelineStep("bert-processing");
+      setBertElapsed(0);
+    });
+
     bertTimerRef.current = setInterval(() => {
       setBertElapsed((prev) => prev + 1);
     }, 1000);
-    // Mock: complete after ~12 seconds
-    setTimeout(() => {
+
+    try {
+      const res = await fetch("http://127.0.0.1:8086/api/knowledge-graph", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_id: patientId,
+          transcript_payload: { transcript },
+          inference_config: {
+            max_context_tokens: 4096,
+            window_overlap_tokens: 1000,
+            relation_batch_size: 8,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? `KG API error: ${res.status}`);
+      }
+      const { job_id } = await res.json();
+
+      const poll = async () => {
+        try {
+          const pollRes = await fetch(`http://127.0.0.1:8086/api/jobs/${encodeURIComponent(job_id)}`);
+          if (!pollRes.ok) return;
+          const data = await pollRes.json();
+
+          if (data.status === "completed") {
+            if (bertPollingRef.current) clearInterval(bertPollingRef.current);
+            if (bertTimerRef.current) clearInterval(bertTimerRef.current);
+            setPipelineStep("complete");
+            loadGraph();
+          } else if (data.status === "failed") {
+            if (bertPollingRef.current) clearInterval(bertPollingRef.current);
+            if (bertTimerRef.current) clearInterval(bertTimerRef.current);
+            setGraphError(data.error ?? "Knowledge graph extraction failed");
+            setPipelineStep("bert-confirm");
+          }
+        } catch {
+          // Keep polling on network error
+        }
+      };
+
+      poll();
+      bertPollingRef.current = setInterval(poll, 5000);
+    } catch (err) {
       if (bertTimerRef.current) clearInterval(bertTimerRef.current);
-      setPipelineStep("complete");
-    }, 12000);
+      setGraphError(err instanceof Error ? err.message : "Knowledge graph extraction failed");
+      setPipelineStep("bert-confirm");
+    }
   };
 
   const formatElapsed = (seconds: number) => {
@@ -665,7 +747,7 @@ export function PatientDetailPage() {
             {/* Right: Dark mode + meta */}
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground hidden sm:inline">
-                Age {patient.age} &middot; {patient.sessionsCompleted} sessions
+                {patient.sessionsCompleted} sessions
               </span>
 
               <button
@@ -733,8 +815,10 @@ export function PatientDetailPage() {
                 <Upload className="w-5 h-5 text-primary" />
               </div>
               <h3 className="text-foreground mb-1">Upload Transcript</h3>
-              <p className="text-xs text-muted-foreground">
-                Upload a session recording to diarize and process with BERT.
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {sessions.length === 0
+                  ? "No transcripts yet"
+                  : `${sessions.length} session${sessions.length !== 1 ? "s" : ""}. Latest: ${sessionPreview(sessions[0].transcript_json)}`}
               </p>
             </button>
 
@@ -758,8 +842,10 @@ export function PatientDetailPage() {
                 <FileText className="w-5 h-5 text-violet-500" />
               </div>
               <h3 className="text-foreground mb-1">Inspect Sessions</h3>
-              <p className="text-xs text-muted-foreground">
-                Review previous session transcripts and their extracted themes and entities.
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {sessions.length === 0
+                  ? "No transcripts yet"
+                  : `${sessions.length} session${sessions.length !== 1 ? "s" : ""}. Latest: ${sessionPreview(sessions[0].transcript_json)}`}
               </p>
             </button>
 
@@ -783,8 +869,10 @@ export function PatientDetailPage() {
                 <Share2 className="w-5 h-5 text-amber-500" />
               </div>
               <h3 className="text-foreground mb-1">View Patient Graph</h3>
-              <p className="text-xs text-muted-foreground">
-                Explore the full knowledge graph with {getPatientGraph(patient.id).entities.length} entities and {getPatientGraph(patient.id).relations.length} relations.
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {sessions.length === 0
+                  ? "No transcripts yet"
+                  : `Built from ${sessions.length} transcript${sessions.length !== 1 ? "s" : ""}. Explore the full knowledge graph with ${graphData?.entities.length ?? 0} entities and ${graphData?.relations.length ?? 0} relations.`}
               </p>
             </button>
           </div>
@@ -1285,18 +1373,14 @@ export function PatientDetailPage() {
 
               <div className="p-6">
                 {/* Graph Stats Row */}
-                <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-secondary/50 rounded-xl p-4 text-center">
-                    <p className="text-xl text-foreground tabular-nums">{getPatientGraph(patient.id).entities.length}</p>
+                    <p className="text-xl text-foreground tabular-nums">{graphData?.entities.length ?? 0}</p>
                     <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Entities</p>
                   </div>
                   <div className="bg-secondary/50 rounded-xl p-4 text-center">
-                    <p className="text-xl text-foreground tabular-nums">{getPatientGraph(patient.id).relations.length}</p>
+                    <p className="text-xl text-foreground tabular-nums">{graphData?.relations.length ?? 0}</p>
                     <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Relations</p>
-                  </div>
-                  <div className="bg-secondary/50 rounded-xl p-4 text-center">
-                    <p className="text-xl text-foreground tabular-nums">{patient.topThemes.length}</p>
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Themes</p>
                   </div>
                 </div>
 
@@ -1311,30 +1395,33 @@ export function PatientDetailPage() {
                 </button>
 
                 {/* Knowledge Graph Visualization - Compact Preview */}
-                <KnowledgeGraph
-                  data={getPatientGraph(patient.id)}
-                  accentColor={patient.accentColor}
-                  patientName={patient.name}
-                />
-
-                {/* Themes */}
-                {patient.topThemes.length > 0 && (
-                  <div className="mt-5">
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-2">
-                      Top Themes
+                {graphLoading ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-6">
+                    <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
+                    <p className="text-sm text-muted-foreground">Loading knowledge graph...</p>
+                  </div>
+                ) : graphError ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                    <AlertTriangle className="w-12 h-12 text-destructive/60 mb-4" />
+                    <p className="text-muted-foreground font-medium">{graphError}</p>
+                  </div>
+                ) : graphData && (graphData.entities.length > 0 || graphData.relations.length > 0) ? (
+                  <KnowledgeGraph
+                    data={graphData}
+                    accentColor={patient.accentColor}
+                    patientName={patient.name}
+                    patientId={patientId!}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                    <Brain className="w-12 h-12 text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground font-medium">No Knowledge Graph yet</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      Upload a session, complete speaker mapping, and run BERT processing to build the graph.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {patient.topThemes.map((theme) => (
-                        <span
-                          key={theme}
-                          className="px-3 py-1 text-xs rounded-lg bg-muted/60 text-muted-foreground"
-                        >
-                          {theme}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                 )}
+
               </div>
             </motion.div>
           )}
@@ -1477,8 +1564,11 @@ export function PatientDetailPage() {
                   <h2 className="text-foreground tracking-tight mb-1">
                     Creating Transcript
                   </h2>
-                  <p className="text-xs text-muted-foreground mb-6">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Diarizing audio and separating speakers...
+                  </p>
+                  <p className="text-[11px] text-primary/80 font-medium mb-4">
+                    Your request is being processed locally on your device! Awaiting response...
                   </p>
 
                   {/* Elapsed time */}
@@ -1641,8 +1731,11 @@ export function PatientDetailPage() {
                   <h2 className="text-foreground tracking-tight mb-1">
                     Processing with BERT
                   </h2>
-                  <p className="text-xs text-muted-foreground mb-6">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Extracting knowledge graph from transcript...
+                  </p>
+                  <p className="text-[11px] text-primary/80 font-medium mb-4">
+                    Your request is being processed on the server! Awaiting response...
                   </p>
 
                   {/* Elapsed time */}

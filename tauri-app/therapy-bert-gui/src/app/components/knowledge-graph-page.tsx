@@ -6,10 +6,10 @@ import {
   Share2,
   Brain,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
-import { KnowledgeGraph } from "./knowledge-graph";
-import { getPatientGraph } from "./mock-graph-data";
-import { useState, useRef, useEffect } from "react";
+import { KnowledgeGraph, type KnowledgeGraphData } from "./knowledge-graph";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 export function KnowledgeGraphPage() {
   const { patientId } = useParams<{ patientId: string }>();
@@ -17,9 +17,34 @@ export function KnowledgeGraphPage() {
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
 
   const patient = patients.find((p) => p.id === patientId);
-  const graphData = patientId && patient ? getPatientGraph(patient.id) : null;
+
+  const loadGraph = useCallback(async () => {
+    if (!patientId) return;
+    setGraphLoading(true);
+    setGraphError(null);
+    try {
+      const res = await fetch(`http://127.0.0.1:8086/api/graph/${encodeURIComponent(patientId)}`);
+      if (!res.ok) throw new Error(`Failed to fetch graph: ${res.status}`);
+      const data = await res.json();
+      setGraphData(data);
+    } catch (e) {
+      setGraphError(e instanceof Error ? e.message : "Failed to load graph");
+      setGraphData(null);
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [patientId]);
+
+  useEffect(() => {
+    if (patientId) {
+      loadGraph();
+    }
+  }, [patientId, loadGraph]);
 
   if (!patient) {
     return (
@@ -162,7 +187,7 @@ export function KnowledgeGraphPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="grid grid-cols-3 gap-4 mb-6"
+          className="grid grid-cols-2 gap-4 mb-6"
         >
           <div className="bg-card rounded-xl border border-border/40 p-4 text-center">
             <p className="text-xl text-foreground tabular-nums">{graphData?.entities.length ?? 0}</p>
@@ -171,10 +196,6 @@ export function KnowledgeGraphPage() {
           <div className="bg-card rounded-xl border border-border/40 p-4 text-center">
             <p className="text-xl text-foreground tabular-nums">{graphData?.relations.length ?? 0}</p>
             <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Relations</p>
-          </div>
-          <div className="bg-card rounded-xl border border-border/40 p-4 text-center">
-            <p className="text-xl text-foreground tabular-nums">{patient.topThemes.length}</p>
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Themes</p>
           </div>
         </motion.div>
 
@@ -196,41 +217,35 @@ export function KnowledgeGraphPage() {
           </div>
 
           <div className="p-4">
-            {graphData && (
+            {graphLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 px-6">
+                <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
+                <p className="text-sm text-muted-foreground">Loading knowledge graph...</p>
+              </div>
+            ) : graphError ? (
+              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                <AlertTriangle className="w-12 h-12 text-destructive/60 mb-4" />
+                <p className="text-muted-foreground font-medium">{graphError}</p>
+              </div>
+            ) : graphData && (graphData.entities.length > 0 || graphData.relations.length > 0) ? (
               <KnowledgeGraph
                 data={graphData}
                 accentColor={patient.accentColor}
                 patientName={patient.name}
+                patientId={patientId!}
               />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                <Brain className="w-12 h-12 text-muted-foreground/50 mb-4" />
+                <p className="text-muted-foreground font-medium">No Knowledge Graph yet</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Upload a session, complete speaker mapping, and run BERT processing to build the graph.
+                </p>
+              </div>
             )}
           </div>
         </motion.div>
 
-        {/* Themes */}
-        {patient.topThemes.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.3 }}
-            className="mt-6"
-          >
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">
-              Top Themes
-            </p>
-            <div className="bg-card rounded-xl border border-border/40 p-4">
-              <div className="flex flex-wrap gap-2">
-                {patient.topThemes.map((theme) => (
-                  <span
-                    key={theme}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-muted/60 text-foreground"
-                  >
-                    {theme}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
       </div>
     </div>
   );

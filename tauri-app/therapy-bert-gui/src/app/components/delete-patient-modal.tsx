@@ -5,7 +5,7 @@ interface DeletePatientModalProps {
   isOpen: boolean;
   patientName: string;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }
 
 export function DeletePatientModal({

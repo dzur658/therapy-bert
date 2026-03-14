@@ -97,75 +97,19 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-// Mock AI responses based on graph context
-function generateMockAIResponse(query: string, data: KnowledgeGraphData, patientName: string): string {
-  const q = query.toLowerCase();
-  const entities = data.entities;
-  const relations = data.relations;
-
-  if (q.includes("summar") || q.includes("overview")) {
-    const labels = [...new Set(entities.map(e => e.label))];
-    return `Based on ${patientName}'s knowledge graph, there are ${entities.length} entities across ${labels.length} categories (${labels.join(", ")}) connected by ${relations.length} relationships. The graph captures therapeutic themes, symptoms, strategies, and their interconnections from session transcripts.`;
-  }
-  if (q.includes("strateg") || q.includes("treatment") || q.includes("intervention")) {
-    const strategies = entities.filter(e => e.label === "STRATEGY").map(e => e.text);
-    if (strategies.length > 0) {
-      return `The following therapeutic strategies are documented in ${patientName}'s graph: ${strategies.join(", ")}. These strategies are connected to various symptoms and themes through practitioner-proposed relationships.`;
-    }
-    return `No specific strategies are currently documented in ${patientName}'s knowledge graph.`;
-  }
-  if (q.includes("symptom")) {
-    const symptoms = entities.filter(e => e.label === "SYMPTOM").map(e => e.text);
-    if (symptoms.length > 0) {
-      return `${patientName}'s documented symptoms include: ${symptoms.join(", ")}. These are linked to core themes and triggers in the graph through causal relationships identified during sessions.`;
-    }
-    return `No specific symptoms are currently tracked in ${patientName}'s knowledge graph.`;
-  }
-  if (q.includes("goal")) {
-    const goals = entities.filter(e => e.label === "GOAL").map(e => e.text);
-    if (goals.length > 0) {
-      return `${patientName}'s therapeutic goals include: ${goals.join(", ")}. These goals are connected to various themes and strategies in the graph, providing a clear treatment trajectory.`;
-    }
-    return `No explicit goals are documented yet in ${patientName}'s graph.`;
-  }
-  if (q.includes("pending") || q.includes("unconfirm")) {
-    const pending = relations.filter(r => r.patient_acceptance === "pending");
-    if (pending.length > 0) {
-      return `There are ${pending.length} pending relationships that haven't been confirmed by ${patientName}:\n${pending.map(r => `• ${r.source} → ${r.predicate} → ${r.target}`).join("\n")}\nThese are practitioner-proposed connections awaiting patient validation.`;
-    }
-    return `All relationships in ${patientName}'s graph have been confirmed or rejected.`;
-  }
-  if (q.includes("connect") || q.includes("relat") || q.includes("link")) {
-    const mostConnected = entities
-      .map(e => ({
-        ...e,
-        count: relations.filter(r => r.source === e.text || r.target === e.text).length
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
-    return `The most connected entities in ${patientName}'s graph are:\n${mostConnected.map(e => `• ${e.text} (${e.label}) — ${e.count} connections`).join("\n")}\nThese represent central concepts in ${patientName}'s therapeutic narrative.`;
-  }
-  if (q.includes("rejected") || q.includes("disagree")) {
-    const rejected = relations.filter(r => r.patient_acceptance === "rejected");
-    if (rejected.length > 0) {
-      return `There are ${rejected.length} rejected relationships:\n${rejected.map(r => `• ${r.source} → ${r.predicate} → ${r.target} (proposed by ${r.proposed_by})`).join("\n")}\nThese represent therapeutic hypotheses that ${patientName} did not agree with.`;
-    }
-    return `No relationships have been rejected by ${patientName}.`;
-  }
-
-  // Default contextual response
-  return `Based on ${patientName}'s knowledge graph with ${entities.length} entities and ${relations.length} relationships, I can help you explore therapeutic themes, symptoms, strategies, and their connections. Try asking about specific symptoms, treatment strategies, pending relationships, or goals. Note: This is a mock LiteLLM response — in production, this would query your local LiteLLM backend with the full graph context.`;
-}
+const GRAPH_RAG_API_BASE = "http://127.0.0.1:8091";
 
 // ── Component ────────────────────────────────────────────────────────────────
 export function KnowledgeGraph({
   data,
   accentColor,
   patientName,
+  patientId,
 }: {
   data: KnowledgeGraphData;
   accentColor: string;
   patientName: string;
+  patientId: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<SimNode[]>([]);
@@ -194,6 +138,7 @@ export function KnowledgeGraph({
   const [chatInput, setChatInput] = useState("");
   const [isAiTyping, setIsAiTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatSessionIdRef = useRef<string>(crypto.randomUUID());
 
   // Sidebar state
   const sidebarOpen = selectedNode !== null || selectedEdge !== null;
@@ -451,9 +396,9 @@ export function KnowledgeGraph({
   }, []);
 
   // ── Chat handlers ─────────────────────────────────────────────────────────
-  const sendMessage = useCallback(() => {
+  const sendMessage = useCallback(async () => {
     const text = chatInput.trim();
-    if (!text || isAiTyping) return;
+    if (!text || isAiTyping || !patientId) return;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -465,19 +410,61 @@ export function KnowledgeGraph({
     setChatInput("");
     setIsAiTyping(true);
 
-    // Simulate LiteLLM response delay
-    setTimeout(() => {
-      const response = generateMockAIResponse(text, data, patientName);
-      const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: response,
-        timestamp: new Date(),
-      };
-      setChatMessages(prev => [...prev, aiMsg]);
+    const aiMsgId = (Date.now() + 1).toString();
+    const aiMsg: ChatMessage = {
+      id: aiMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
+    setChatMessages(prev => [...prev, aiMsg]);
+
+    try {
+      const res = await fetch(`${GRAPH_RAG_API_BASE}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: chatSessionIdRef.current,
+          patient_id: patientId,
+          message: text,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(errText || `Graph RAG API error: ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        accumulated += chunk;
+        setChatMessages(prev =>
+          prev.map(m =>
+            m.id === aiMsgId ? { ...m, content: accumulated } : m
+          )
+        );
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Graph RAG service unavailable";
+      setChatMessages(prev =>
+        prev.map(m =>
+          m.id === aiMsgId
+            ? { ...m, content: `Error: ${errMsg}. Please ensure the Graph RAG service is running at ${GRAPH_RAG_API_BASE}.` }
+            : m
+        )
+      );
+    } finally {
       setIsAiTyping(false);
-    }, 800 + Math.random() * 1200);
-  }, [chatInput, isAiTyping, data, patientName]);
+    }
+  }, [chatInput, isAiTyping, patientId]);
 
   // Scroll chat to bottom
   useEffect(() => {
@@ -1111,7 +1098,7 @@ export function KnowledgeGraph({
             <div className="text-left">
               <p className="text-sm text-foreground">Ask AI about this graph</p>
               <p className="text-[11px] text-muted-foreground">
-                Powered by LiteLLM · Analyze {patientName}'s knowledge graph
+                Powered by Graph RAG · Analyze {patientName}'s knowledge graph
               </p>
             </div>
           </div>
@@ -1239,10 +1226,9 @@ export function KnowledgeGraph({
                   </button>
                 </div>
 
-                {/* LiteLLM badge */}
                 <div className="px-3 pb-2 flex items-center justify-center gap-1.5">
                   <span className="text-[9px] text-muted-foreground/40">
-                    Mock responses · In production, connects to LiteLLM at localhost:4000
+                    Powered by Graph RAG · {GRAPH_RAG_API_BASE}
                   </span>
                 </div>
               </div>

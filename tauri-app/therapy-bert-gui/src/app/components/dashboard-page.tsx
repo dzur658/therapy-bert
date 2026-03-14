@@ -11,7 +11,17 @@ import { usePatients } from "../context/patient-context";
 import { motion } from "motion/react";
 
 export function DashboardPage() {
-  const { patients, addPatient, deletePatient, movePatient, isDark, toggleDark } = usePatients();
+  const {
+    patients,
+    addPatient,
+    deletePatient,
+    movePatient,
+    isDark,
+    toggleDark,
+    patientsLoading,
+    patientsError,
+    refetchPatients,
+  } = usePatients();
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -20,24 +30,25 @@ export function DashboardPage() {
   const filteredPatients = useMemo(() => {
     if (!searchQuery.trim()) return patients;
     const q = searchQuery.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.topThemes.some((t) => t.toLowerCase().includes(q))
-    );
+    return patients.filter((p) => p.name.toLowerCase().includes(q));
   }, [patients, searchQuery]);
 
-  const totalNodes = patients.reduce((sum, p) => sum + p.graphNodes, 0);
   const totalSessions = patients.reduce((sum, p) => sum + p.sessionsCompleted, 0);
 
   const deleteTarget = patients.find((p) => p.id === deleteTargetId) ?? null;
 
-  const handleConfirmDelete = () => {
-    if (deleteTargetId) {
-      deletePatient(deleteTargetId);
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId) return;
+    try {
+      await deletePatient(deleteTargetId);
       setDeleteTargetId(null);
+    } catch {
+      // Error shown inline via patientsError
     }
   };
+
+  const isEmpty = patients.length === 0 && !searchQuery;
+  const noSearchResults = searchQuery && filteredPatients.length === 0;
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -52,11 +63,19 @@ export function DashboardPage() {
             onToggleDark={toggleDark}
           />
 
-          <StatsBar
-            totalPatients={patients.length}
-            totalNodes={totalNodes}
-            totalSessions={totalSessions}
-          />
+          {patientsError && (
+            <div className="mb-4 p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+              {patientsError}
+              <button
+                onClick={() => refetchPatients()}
+                className="ml-3 text-primary hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          <StatsBar totalPatients={patients.length} totalSessions={totalSessions} />
 
           {/* Section Label */}
           <motion.div
@@ -75,21 +94,20 @@ export function DashboardPage() {
             )}
           </motion.div>
 
-          {/* Patient Grid */}
-          {filteredPatients.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredPatients.map((patient, index) => (
-                <PatientCard
-                  key={patient.id}
-                  patient={patient}
-                  index={index}
-                  onDelete={(id) => setDeleteTargetId(id)}
-                  onMove={movePatient}
-                  onClick={() => navigate(`/patient/${patient.id}`)}
-                />
-              ))}
+          {/* Patient Grid / Empty State */}
+          {patientsLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <p className="text-muted-foreground">Loading patients...</p>
             </div>
-          ) : (
+          ) : isEmpty ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center py-20 text-center"
+            >
+              <p className="text-muted-foreground">No patients yet</p>
+            </motion.div>
+          ) : noSearchResults ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -106,6 +124,19 @@ export function DashboardPage() {
                 Clear search
               </button>
             </motion.div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredPatients.map((patient, index) => (
+                <PatientCard
+                  key={patient.id}
+                  patient={patient}
+                  index={index}
+                  onDelete={(id) => setDeleteTargetId(id)}
+                  onMove={movePatient}
+                  onClick={() => navigate(`/patient/${patient.id}`)}
+                />
+              ))}
+            </div>
           )}
 
           {/* Footer */}
@@ -125,6 +156,7 @@ export function DashboardPage() {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onAdd={addPatient}
+          addError={patientsError}
         />
 
         <DeletePatientModal
