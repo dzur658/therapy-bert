@@ -1,4 +1,7 @@
+import asyncio
 import uuid
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,8 +10,11 @@ from openai import AsyncOpenAI
 from typing import Dict, List
 import uvicorn
 
-# Assuming this matches your existing import structure
-from kg.ladybug_db.db_manager import PatientGraphDB
+import real_ladybug as lbug
+
+# Resolve path to backend/kg/patients (graph_rag_api.py lives in backend/basic-graph-rag/)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+_PATIENTS_DIR = _BACKEND_DIR / "kg" / "patients"
 
 app = FastAPI(title="Therapy Knowledge Graph API")
 
@@ -31,61 +37,81 @@ class ChatRequest(BaseModel):
     session_id: str
     patient_id: str
     message: str
+    patient_name: str = "Patient"  # Used in system prompt for personalized responses
+    graph_context: str | None = None  # Optional: frontend passes the graph it's already displaying
 
-def fetch_dynamic_graph_context(patient_id: str) -> str:
-    """Dynamically connects to the patient's LadybugDB and compiles the context string."""
+def _read_graph_context_sync(patient_id: str) -> str:
+    """Synchronous DB read — run via run_in_executor to avoid blocking the event loop."""
+    db_path = _PATIENTS_DIR / f"patient_{patient_id}_graph.lbug"
+    if not db_path.exists():
+        print(f"No graph DB found for patient {patient_id} at {db_path}")
+        return "No graph context available."
+
     try:
-        db = PatientGraphDB(patient_id)
-        
-        # The universal "Show me everything" query
+        db = lbug.Database(str(db_path))
+        conn = lbug.Connection(db)
+
         query = """
         MATCH (n)
         OPTIONAL MATCH (n)-[r]->(m)
         RETURN n, r, m
         """
-        # Execute query (syntax depends slightly on your exact wrapper)
-        # Assuming db.conn.execute returns an iterable of dictionaries
-        results = db.conn.execute(query)
-        
+        results = conn.execute(query)
+
         context_lines = set()
-        
+
         while results.has_next():
             row = results.get_next()
-            node_1 = row[0] # 'n'
-            relation = row[1] # 'r'
-            node_2 = row[2] # 'm'
-            
-            n_text = node_1.get("text", "Unknown")
+            node_1 = row[0]
+            relation = row[1]
+            node_2 = row[2]
+
+            if not node_1:
+                continue
+
+            n_text = node_1.get("text", "")
             n_label = node_1.get("label", "Entity")
-            
+
+            if not n_text:
+                continue
+
             if relation and node_2:
-                m_text = node_2.get("text", "Unknown")
+                m_text = node_2.get("text", "")
                 m_label = node_2.get("label", "Entity")
                 pred = relation.get("predicate", "RELATES_TO")
-                context_lines.add(f"[{n_label}] {n_text} -> {pred} -> [{m_label}] {m_text}")
+                if m_text:
+                    context_lines.add(f"[{n_label}] {n_text} -> {pred} -> [{m_label}] {m_text}")
             else:
                 context_lines.add(f"[{n_label}] {n_text} (Isolated)")
-                
-        # Close connection if your wrapper requires it to free the WAL
-        # db.close() 
-        
+
+        print(f"Loaded {len(context_lines)} context lines for patient {patient_id}")
         return "\n".join(sorted(list(context_lines)))
     except Exception as e:
         print(f"Failed to fetch graph for {patient_id}: {e}")
         return "No graph context available."
+
+async def fetch_dynamic_graph_context(patient_id: str) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _read_graph_context_sync, patient_id)
 
 @app.post("/api/chat")
 async def chat_with_graph(request: ChatRequest):
     # 1. Initialize the session if it doesn't exist
     if request.session_id not in chat_sessions:
         print(f"Initializing new chat session: {request.session_id} for patient: {request.patient_id}")
+
+        # Use graph_context from frontend (already-loaded graph) if provided; else read from DB
+        if request.graph_context:
+            graph_context = request.graph_context
+            print(f"Using graph context from frontend ({len(graph_context)} chars)")
+        else:
+            # tries to read from DB but will probably be blocked due to the sync call
+            graph_context = await fetch_dynamic_graph_context(request.patient_id)
         
-        # Dynamically build the context ONLY on the first message
-        graph_context = fetch_dynamic_graph_context(request.patient_id)
-        
-        system_prompt = f"""You are an elite clinical AI assistant analyzing a patient's Knowledge Graph. 
+        system_prompt = f"""You are an elite clinical AI assistant analyzing {request.patient_name}'s Knowledge Graph. 
 Answer the user's questions based ONLY on the graph context provided below. 
 Do not hallucinate external clinical facts. Be concise and professional.
+When referring to the patient, use their name: {request.patient_name}.
 
 CRITICAL RULES:
 1. You may only connect two concepts if there is a direct arrow (->) between them in the text.

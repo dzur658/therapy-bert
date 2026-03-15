@@ -99,6 +99,27 @@ interface ChatMessage {
 
 const GRAPH_RAG_API_BASE = "http://127.0.0.1:8091";
 
+/** Build the graph context string from already-loaded graph data (same format the backend expects). */
+function buildGraphContextFromData(data: KnowledgeGraphData): string {
+  const entityMap = new Map(data.entities.map((e) => [e.text, e.label]));
+  const connected = new Set<string>();
+  const lines: string[] = [];
+
+  for (const r of data.relations) {
+    connected.add(r.source);
+    connected.add(r.target);
+    const srcLabel = entityMap.get(r.source) ?? "Entity";
+    const tgtLabel = entityMap.get(r.target) ?? "Entity";
+    lines.push(`[${srcLabel}] ${r.source} -> ${r.predicate} -> [${tgtLabel}] ${r.target}`);
+  }
+  for (const e of data.entities) {
+    if (!connected.has(e.text)) {
+      lines.push(`[${e.label}] ${e.text} (Isolated)`);
+    }
+  }
+  return lines.sort().join("\n");
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 export function KnowledgeGraph({
   data,
@@ -420,13 +441,16 @@ export function KnowledgeGraph({
     setChatMessages(prev => [...prev, aiMsg]);
 
     try {
+      const graphContext = buildGraphContextFromData(data);
       const res = await fetch(`${GRAPH_RAG_API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: chatSessionIdRef.current,
           patient_id: patientId,
+          patient_name: patientName,
           message: text,
+          graph_context: graphContext,
         }),
       });
 
@@ -464,7 +488,7 @@ export function KnowledgeGraph({
     } finally {
       setIsAiTyping(false);
     }
-  }, [chatInput, isAiTyping, patientId]);
+  }, [chatInput, isAiTyping, patientId, patientName, data]);
 
   // Scroll chat to bottom
   useEffect(() => {
