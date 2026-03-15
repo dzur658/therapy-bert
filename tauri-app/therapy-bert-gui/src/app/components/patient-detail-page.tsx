@@ -14,8 +14,6 @@ import {
   Moon,
   Clock,
   Check,
-  MoreHorizontal,
-  Trash2,
   AlertTriangle,
   X,
   Zap,
@@ -43,12 +41,6 @@ type PipelineStep =
   | "bert-processing"
   | "complete";
 
-// Per-session row with its own 3-dot menu
-function formatSessionDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function sessionPreview(raw: string): string {
   try {
     const data = JSON.parse(raw);
@@ -60,182 +52,12 @@ function sessionPreview(raw: string): string {
   }
 }
 
-function parseTranscriptLines(raw: string): TranscriptLine[] {
-  try {
-    const data = JSON.parse(raw);
-    return (data.transcript as TranscriptLine[]) ?? [];
-  } catch {
-    return [];
-  }
-}
-
-function speakerBadge(speaker: string): { label: string; color: string; bg: string } {
-  if (speaker === "Patient")
-    return { label: "Patient", color: "text-primary", bg: "bg-primary/10" };
-  if (speaker === "Therapist")
-    return { label: "Therapist", color: "text-violet-500", bg: "bg-violet-500/10" };
-  if (speaker === "SPEAKER_09")
-    return { label: "UNKNOWN", color: "text-yellow-600 dark:text-yellow-400", bg: "bg-yellow-500/10" };
-  if (speaker === "SPEAKER_01")
-    return { label: "SPEAKER_01", color: "text-blue-500", bg: "bg-blue-500/10" };
-  if (speaker === "SPEAKER_02")
-    return { label: "SPEAKER_02", color: "text-orange-500", bg: "bg-orange-500/10" };
-  return { label: speaker, color: "text-muted-foreground", bg: "bg-muted/60" };
-}
-
-function SessionRow({
-  session,
-  index,
-  onDelete,
-}: {
-  session: DbSession;
-  index: number;
-  onDelete: (id: string) => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const lines = parseTranscriptLines(session.transcript_json);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: index * 0.05 }}
-      className="group"
-    >
-      {/* Collapsed header row */}
-      <div
-        onClick={() => setExpanded((o) => !o)}
-        className="px-6 py-4 hover:bg-muted/20 transition-colors cursor-pointer"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
-              <ChevronRight
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
-                  expanded ? "rotate-90" : ""
-                }`}
-              />
-              <span className="text-sm text-foreground">{formatSessionDate(session.created_at)}</span>
-              <span className="text-[11px] text-muted-foreground/60">&middot;</span>
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <Clock className="w-3 h-3" />
-                <span className="text-[11px]">{lines.length} turns</span>
-              </div>
-            </div>
-            {!expanded && (
-              <p className="text-xs text-muted-foreground leading-relaxed pl-5.5">
-                {sessionPreview(session.transcript_json)}
-              </p>
-            )}
-          </div>
-
-          {/* 3-dot menu */}
-          <div
-            ref={menuRef}
-            className="relative flex-shrink-0 mt-0.5"
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen((o) => !o);
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-muted/60 focus:opacity-100"
-              aria-label="Session options"
-            >
-              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-
-            <AnimatePresence>
-              {menuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                  transition={{ duration: 0.13, ease: "easeOut" }}
-                  className="absolute right-0 top-full mt-1 w-44 bg-card border border-border/60 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] overflow-hidden z-50"
-                >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(false);
-                      onDelete(session.id);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-red-500/8 group/del"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                    <span className="text-sm text-red-500">Delete Session</span>
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </div>
-
-      {/* Expanded transcript view */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="overflow-hidden"
-          >
-            <div className="mx-6 mb-4 bg-secondary/30 border border-border/40 rounded-xl overflow-hidden">
-              {lines.length > 0 ? (
-                <div className="max-h-[420px] overflow-y-auto divide-y divide-border/30">
-                  {lines.map((line, i) => {
-                    const badge = speakerBadge(line.speaker);
-                    return (
-                      <div
-                        key={i}
-                        className="px-4 py-3 flex gap-3"
-                      >
-                        <span
-                          className={`text-[11px] tracking-wide flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-md whitespace-nowrap ${badge.bg} ${badge.color}`}
-                        >
-                          {badge.label}
-                        </span>
-                        <p className="text-xs text-foreground/80 leading-relaxed">
-                          {line.text}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="px-4 py-6 text-center">
-                  <p className="text-xs text-muted-foreground">No transcript lines available</p>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
 export function PatientDetailPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const { patients, isDark, toggleDark } = usePatients();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [activeView, setActiveView] = useState<"upload" | "sessions" | "graph" | null>(null);
+  const [activeView, setActiveView] = useState<"upload" | "graph" | null>(null);
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -264,8 +86,6 @@ export function PatientDetailPage() {
   const [currentUnknownPos, setCurrentUnknownPos] = useState(0);
   const [selectedUnknownRole, setSelectedUnknownRole] = useState<"patient" | "practitioner" | "neither" | null>(null);
 
-  // Delete session confirmation states
-  const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(null);
 
   // Graph data from API
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
@@ -336,15 +156,6 @@ export function PatientDetailPage() {
       if (bertPollingRef.current) clearInterval(bertPollingRef.current);
     };
   }, []);
-
-  const deleteSession = async (sessionId: string) => {
-    try {
-      await TranscriptManager.deleteSession(sessionId);
-      setDbSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    } catch (e) {
-      console.error("Failed to delete session", e);
-    }
-  };
 
   const handleFileSelect = (file: File | null) => {
     if (!file) return;
@@ -824,18 +635,14 @@ export function PatientDetailPage() {
 
             {/* Inspect Previous Sessions */}
             <button
-              onClick={() => setActiveView(activeView === "sessions" ? null : "sessions")}
-              className={`group relative bg-card rounded-2xl border p-6 text-left transition-all duration-200 ${
-                activeView === "sessions"
-                  ? "border-primary/40 shadow-[0_0_0_2px_rgba(14,165,160,0.12)]"
-                  : "border-border/60 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] hover:border-primary/20"
-              }`}
+              onClick={() => navigate(`/patient/${patient.id}/sessions`)}
+              className="group relative bg-card rounded-2xl border p-6 text-left transition-all duration-200 border-border/60 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] hover:border-primary/20"
             >
               <div
                 className="absolute top-0 left-6 right-6 h-[2px] rounded-b-full transition-opacity duration-300"
                 style={{
                   backgroundColor: patient.accentColor,
-                  opacity: activeView === "sessions" ? 1 : 0.4,
+                  opacity: 0.4,
                 }}
               />
               <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center mb-4">
@@ -1305,49 +1112,6 @@ export function PatientDetailPage() {
                     </motion.div>
                   );
                 })()}
-              </div>
-            </motion.div>
-          )}
-
-          {activeView === "sessions" && (
-            <motion.div
-              key="sessions"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3 }}
-              className="bg-card rounded-2xl border border-border/60 overflow-hidden"
-            >
-              <div className="px-6 py-5 border-b border-border/40 flex items-center justify-between">
-                <div>
-                  <h3 className="text-foreground flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-violet-500" />
-                    Previous Sessions
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {sessions.length} session{sessions.length !== 1 ? "s" : ""} recorded
-                  </p>
-                </div>
-              </div>
-
-              <div className="divide-y divide-border/40">
-                {sessions.length > 0 ? (
-                  sessions.map((session, i) => (
-                    <SessionRow
-                      key={session.id}
-                      session={session}
-                      index={i}
-                      onDelete={(id) => setDeleteSessionTarget(id)}
-                    />
-                  ))
-                ) : (
-                  <div className="px-6 py-12 text-center">
-                    <p className="text-muted-foreground text-sm">No sessions recorded yet</p>
-                    <p className="text-muted-foreground/60 text-xs mt-1">
-                      Upload a transcript to get started
-                    </p>
-                  </div>
-                )}
               </div>
             </motion.div>
           )}
@@ -1833,88 +1597,6 @@ export function PatientDetailPage() {
         )}
       </AnimatePresence>
 
-      {/* ===== Delete Session Confirmation Modal ===== */}
-      <AnimatePresence>
-        {deleteSessionTarget !== null && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-foreground/10 backdrop-blur-sm z-50"
-              onClick={() => setDeleteSessionTarget(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-sm px-4"
-            >
-              <div className="bg-card rounded-2xl border border-border/60 shadow-[0_25px_65px_rgba(0,0,0,0.12)] overflow-hidden">
-                <div className="flex justify-end px-5 pt-5">
-                  <button
-                    onClick={() => setDeleteSessionTarget(null)}
-                    className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                  >
-                    <X className="w-4 h-4 text-muted-foreground" />
-                  </button>
-                </div>
-
-                <div className="px-6 pb-6 pt-2 text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center mx-auto mb-4">
-                    <AlertTriangle className="w-6 h-6 text-destructive" />
-                  </div>
-
-                  <h2 className="text-foreground tracking-tight mb-1">
-                    Delete Session Transcript
-                  </h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    You are about to permanently delete this session transcript.
-                  </p>
-
-                  <div className="bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3 mb-4 text-left">
-                    <p className="text-xs text-destructive/90 leading-relaxed">
-                      <span className="font-semibold">This action is permanent and cannot be undone.</span>{" "}
-                      The selected session transcript and its raw audio data will be irreversibly erased from this device.
-                    </p>
-                  </div>
-
-                  <div className="bg-primary/6 border border-primary/20 rounded-xl px-4 py-3 mb-6 text-left flex items-start gap-2.5">
-                    <Share2 className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-primary/80 leading-relaxed">
-                      The patient's knowledge graph will <span className="font-semibold">not</span> be affected.
-                      All previously extracted nodes, edges, and relationships will remain intact.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setDeleteSessionTarget(null)}
-                      className="flex-1 px-4 py-2.5 rounded-xl border border-border/60 text-muted-foreground hover:bg-muted/50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (deleteSessionTarget) {
-                          deleteSession(deleteSessionTarget);
-                        }
-                        setDeleteSessionTarget(null);
-                      }}
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-destructive text-white hover:bg-destructive/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

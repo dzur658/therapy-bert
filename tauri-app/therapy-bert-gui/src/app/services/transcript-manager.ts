@@ -33,7 +33,7 @@ export const TranscriptManager = {
       id: d.session_id,
       patient_id: patientId,
       created_at: d.date,
-      transcript_json: JSON.stringify({ transcript: d.transcript }),
+      transcript_json: JSON.stringify(d.transcript),
     }));
   },
 
