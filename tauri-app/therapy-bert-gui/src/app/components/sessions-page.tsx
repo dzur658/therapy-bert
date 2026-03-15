@@ -12,13 +12,26 @@ import {
   Trash2,
   AlertTriangle,
   Share2,
+  Sparkles,
   X,
+  Loader2,
+  Quote,
 } from "lucide-react";
 import {
   TranscriptManager,
   type TranscriptLine,
   type DbSession,
 } from "../services/transcript-manager";
+import {
+  RepresentationService,
+  type AnalyzeResponse,
+} from "../services/representation-service";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from "./ui/context-menu";
 
 function formatSessionDate(iso: string): string {
   const d = new Date(iso);
@@ -91,14 +104,24 @@ function SessionCard({
   session,
   index,
   onDelete,
+  onReveal,
 }: {
   session: DbSession;
   index: number;
   onDelete: (id: string) => void;
+  onReveal: (text: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [hasSelection, setHasSelection] = useState(false);
+  const selectionRef = useRef("");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const captureSelection = useCallback(() => {
+    const sel = window.getSelection()?.toString().trim() ?? "";
+    selectionRef.current = sel;
+    setHasSelection(sel.length > 0);
+  }, []);
   const lines = parseTranscriptLines(session.transcript_json);
 
   useEffect(() => {
@@ -197,37 +220,276 @@ function SessionCard({
             transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
             className="overflow-hidden"
           >
-            <div className="mx-6 mb-5 bg-secondary/30 border border-border/40 rounded-xl overflow-hidden">
-              {lines.length > 0 ? (
-                <div className="max-h-[520px] overflow-y-auto divide-y divide-border/30">
-                  {lines.map((line, i) => {
-                    const badge = speakerBadge(line.speaker);
-                    return (
-                      <div key={i} className="px-4 py-3 flex gap-3">
-                        <span
-                          className={`text-[11px] tracking-wide flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-md whitespace-nowrap ${badge.bg} ${badge.color}`}
-                        >
-                          {badge.label}
-                        </span>
-                        <p className="text-xs text-foreground/80 leading-relaxed">
-                          {line.text}
-                        </p>
-                      </div>
-                    );
-                  })}
+            <ContextMenu>
+              <ContextMenuTrigger
+                asChild
+                onContextMenu={captureSelection}
+                onMouseUp={captureSelection}
+              >
+                <div className="mx-6 mb-5 bg-secondary/30 border border-border/40 rounded-xl overflow-hidden">
+                  {lines.length > 0 ? (
+                    <div className="max-h-[520px] overflow-y-auto divide-y divide-border/30">
+                      {lines.map((line, i) => {
+                        const badge = speakerBadge(line.speaker);
+                        return (
+                          <div key={i} className="px-4 py-3 flex gap-3">
+                            <span
+                              className={`text-[11px] tracking-wide flex-shrink-0 mt-0.5 px-2 py-0.5 rounded-md whitespace-nowrap ${badge.bg} ${badge.color}`}
+                            >
+                              {badge.label}
+                            </span>
+                            <p className="text-xs text-foreground/80 leading-relaxed select-text">
+                              {line.text}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center">
+                      <p className="text-xs text-muted-foreground">
+                        No transcript lines available
+                      </p>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="px-4 py-6 text-center">
-                  <p className="text-xs text-muted-foreground">
-                    No transcript lines available
-                  </p>
-                </div>
-              )}
-            </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-52 bg-card border-border/60 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+                <ContextMenuItem
+                  disabled={!hasSelection}
+                  onSelect={() => {
+                    if (selectionRef.current) onReveal(selectionRef.current);
+                  }}
+                  className="flex items-center gap-2 rounded-lg"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Reveal ✨</span>
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </motion.div>
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+function RevealPanel({
+  open,
+  highlightedText,
+  onClose,
+}: {
+  open: boolean;
+  highlightedText: string;
+  onClose: () => void;
+}) {
+  const [revealInput, setRevealInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setRevealInput("");
+      setResult(null);
+      setError(null);
+      setLoading(false);
+    }
+  }, [open]);
+
+  const handleAnalyze = async () => {
+    if (!highlightedText || !revealInput.trim()) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await RepresentationService.analyze(
+        highlightedText,
+        revealInput.trim()
+      );
+      setResult(res);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-foreground/5 backdrop-blur-[2px] z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-card border-l border-border/60 shadow-[-25px_0_65px_rgba(0,0,0,0.08)] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-border/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-foreground">
+                    Reveal ✨
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    Representation Engineering
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {/* Explanation */}
+              <div className="bg-primary/6 border border-primary/20 rounded-xl px-4 py-3">
+                <p className="text-xs text-primary/80 leading-relaxed">
+                  Representation engineering inspects the model's hidden states
+                  to reveal subtext the patient may not be expressing directly.
+                  Enter a direction below to steer the analysis.
+                </p>
+              </div>
+
+              {/* Highlighted text */}
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <Quote className="w-3 h-3" />
+                  Selected transcript
+                </p>
+                <div className="bg-secondary/30 border border-border/40 rounded-xl px-4 py-3">
+                  <p className="text-xs text-foreground/80 leading-relaxed italic">
+                    "{highlightedText}"
+                  </p>
+                </div>
+              </div>
+
+              {/* Reveal input */}
+              <div>
+                <label className="text-sm text-foreground mb-2 block">
+                  The patient is currently...
+                </label>
+                <textarea
+                  value={revealInput}
+                  onChange={(e) => setRevealInput(e.target.value)}
+                  placeholder="feeling"
+                  rows={2}
+                  className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 resize-none transition-colors"
+                />
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[
+                    "feeling anxious because",
+                    "avoiding discussing",
+                    "grieving over",
+                    "minimizing the impact of",
+                    "projecting onto others about",
+                  ].map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      onClick={() => setRevealInput(example)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted/70 rounded-lg px-2 py-1 transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button
+                onClick={handleAnalyze}
+                disabled={loading || !revealInput.trim()}
+                className="w-full px-4 py-2.5 rounded-xl bg-primary text-white text-sm hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Revealing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Reveal ✨</span>
+                  </>
+                )}
+              </button>
+
+              {/* Error */}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3"
+                >
+                  <p className="text-xs text-destructive/90 leading-relaxed">
+                    <span className="font-semibold">Analysis failed.</span>{" "}
+                    {error}
+                  </p>
+                </motion.div>
+              )}
+
+              {/* Results */}
+              {result && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-4"
+                >
+                  {/* Baseline */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                      Baseline (literal)
+                    </p>
+                    <div className="bg-secondary/30 border border-border/40 rounded-xl px-4 py-3">
+                      <p className="text-xs text-foreground/70 leading-relaxed">
+                        {result.baseline}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Insight */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-amber-500 mb-2 flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3" />
+                      Revealed insight
+                    </p>
+                    <div className="bg-amber-500/8 border border-amber-500/20 rounded-xl px-4 py-3">
+                      <p className="text-xs text-foreground leading-relaxed">
+                        {result.insight}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Timing */}
+                  <p className="text-[10px] text-muted-foreground/50 text-right">
+                    Processed in {result.processing_time_seconds}s
+                  </p>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -242,6 +504,13 @@ export function SessionsPage() {
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(
     null
   );
+  const [revealOpen, setRevealOpen] = useState(false);
+  const [revealText, setRevealText] = useState("");
+
+  const handleReveal = useCallback((text: string) => {
+    setRevealText(text);
+    setRevealOpen(true);
+  }, []);
 
   const patient = patients.find((p) => p.id === patientId);
 
@@ -446,6 +715,7 @@ export function SessionsPage() {
                 session={session}
                 index={i}
                 onDelete={(id) => setDeleteSessionTarget(id)}
+                onReveal={handleReveal}
               />
             ))}
           </div>
@@ -557,6 +827,13 @@ export function SessionsPage() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Reveal Panel */}
+      <RevealPanel
+        open={revealOpen}
+        highlightedText={revealText}
+        onClose={() => setRevealOpen(false)}
+      />
     </div>
   );
 }
