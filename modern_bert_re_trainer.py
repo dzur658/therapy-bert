@@ -129,7 +129,13 @@ if __name__ == "__main__":
                                          id2label=id2label
                                          )
     
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
     model.to(device)
 
     # ==========================================
