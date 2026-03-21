@@ -101,7 +101,8 @@ class RelationExtractionInferencePipeline:
 		limited_predictions = predictions[:top_k]
 
 		if top_k == 1:
-			return limited_predictions[0]
+			# remove [0] selector since limited_predictions already does this
+			return limited_predictions
 		else:
 			return limited_predictions
 
